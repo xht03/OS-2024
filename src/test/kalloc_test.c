@@ -46,6 +46,9 @@ void kalloc_test() {
     SYNC(2)
     if (kalloc_page_cnt.count != r)
         FAIL("FAIL: kalloc_page_cnt %d -> %lld\n", r, kalloc_page_cnt.count);
+    
+    //printk("CPU%d: kalloc_page PASS\n", i);
+
     SYNC(3)
     for (int j = 0; j < 10000;) {
         if (j < 1000 || rand() > RAND_MAX / 16 * 7) {
