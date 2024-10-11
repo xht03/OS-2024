@@ -45,8 +45,15 @@ void release_sched_lock()
 bool is_zombie(Proc *p)
 {
     bool r;
-    acquire_sched_lock();
     r = p->state == ZOMBIE;
+    return r;
+}
+
+bool is_unused(Proc *p)
+{
+    bool r;
+    acquire_sched_lock();
+    r = p->state == UNUSED;
     release_sched_lock();
     return r;
 }
@@ -81,7 +88,7 @@ bool activate_proc(Proc *p)
 // 更新进程状态
 static void update_this_state(enum procstate new_state)
 {
-    acquire_spinlock(&proc_lock);
+    // acquire_spinlock(&proc_lock);
 
     // 更新当前进程的状态
     Proc *p = thisproc();
@@ -94,7 +101,7 @@ static void update_this_state(enum procstate new_state)
         queue_unlock(&sched_queue);
     }
 
-    release_spinlock(&proc_lock);
+    // release_spinlock(&proc_lock);
 }
 
 // 从调度队列中选择下一个运行的进程，如果没有可运行的进程，则返回idle进程
@@ -136,15 +143,17 @@ static Proc *pick_next()
 // 更新 进程p 为当前CPU正在执行的进程
 static void update_this_proc(Proc *p)
 {
-    acquire_spinlock(&proc_lock);
+    // acquire_spinlock(&proc_lock);
     cpus[cpuid()].sched.current = p;
-    release_spinlock(&proc_lock);
+    // release_spinlock(&proc_lock);
 }
 
 // 调度器（需要调度队列的锁）
 // 选择下一个进程并切换到该进程
 void sched(enum procstate new_state)
 {
+    acquire_spinlock(&proc_lock);
+
     auto this = thisproc();
 
     ASSERT(this->state == RUNNING);
@@ -159,7 +168,10 @@ void sched(enum procstate new_state)
 
     next->state = RUNNING;
 
+    release_spinlock(&proc_lock);
+
     if (next != this) {
+        //attach_pgdir(&next->pgdir);
         swtch(&this->kcontext, next->kcontext);
     }
 
