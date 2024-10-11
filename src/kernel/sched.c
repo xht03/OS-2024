@@ -45,9 +45,7 @@ void release_sched_lock()
 bool is_zombie(Proc *p)
 {
     bool r;
-    acquire_sched_lock();
     r = p->state == ZOMBIE;
-    release_sched_lock();
     return r;
 }
 

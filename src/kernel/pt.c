@@ -9,6 +9,7 @@ PTEntriesPtr get_pte(struct pgdir *pgdir, u64 va, bool alloc)
     // Return a pointer to the PTE (Page Table Entry) for virtual address 'va'
     // If the entry not exists (NEEDN'T BE VALID), allocate it if alloc=true, or return NULL if false.
     // THIS ROUTINUE GETS THE PTE, NOT THE PAGE DESCRIBED BY PTE.
+    return 0;
 }
 
 void init_pgdir(struct pgdir *pgdir)
