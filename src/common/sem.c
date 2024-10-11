@@ -4,6 +4,8 @@
 #include <kernel/printk.h>
 #include <common/list.h>
 
+
+// 初始化信号量
 void init_sem(Semaphore *sem, int val)
 {
     sem->val = val;

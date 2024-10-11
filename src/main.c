@@ -51,6 +51,9 @@ void main()
             ;
         arch_fence();
         gicv3_init_percpu();
+
+        /* @todo: Print "Hello, world! (Core <core id>)" */
+        printk("Hello, world! (Core %llu)\n", cpuid());
     }
 
     set_return_addr(idle_entry);

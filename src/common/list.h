@@ -3,77 +3,85 @@
 #include <common/defines.h>
 #include <common/spinlock.h>
 
-// ListNode represents one node on a circular list.
+// 链表结点
 typedef struct ListNode {
-    struct ListNode *prev, *next;
+    struct ListNode* prev;
+    struct ListNode* next;
 } ListNode;
 
-// initialize a sigle node circular list.
-void init_list_node(ListNode *node);
-
-// * List operations without locks: USE THEM CAREFULLY
-// - merge the list containing `node1` and the list containing `node2`
-// into one list. It guarantees `node1->next == node2`. Both lists can be
-// empty. This function will return the merged list.
-ListNode *_merge_list(ListNode *node1, ListNode *node2);
-// - syntax sugar: insert a single new node into the list
-#define _insert_into_list(list, node) \
-    (init_list_node(node), _merge_list(list, node))
-// - remove `node` from the list, and then `node` becomes a single
-// node list. It usually returns `node->prev`. If `node` is
-// the last one in the list, it will return NULL.
-ListNode *_detach_from_list(ListNode *node);
-// - walk through the list
-#define _for_in_list(valptr, list)                                  \
-    for (ListNode *__flag = (list), *valptr = __flag->next; valptr; \
-         valptr = valptr == __flag ? (void *)0 : valptr->next)
-// - test if the list is empty
-#define _empty_list(list) ((list)->next == (list))
+void init_list_node(ListNode* node);
+ListNode* _merge_list(ListNode* node1, ListNode* node2);
+ListNode* _insert_into_list(ListNode* list, ListNode* node);
+ListNode* _detach_from_list(ListNode* node);
+bool _empty_list(ListNode* list);
 
 // * List operations with locks
-#define merge_list(lock, node1, node2)             \
-    ({                                             \
-        acquire_spinlock(lock);                    \
-        ListNode *__t = _merge_list(node1, node2); \
-        release_spinlock(lock);                    \
-        __t;                                       \
+#define merge_list(lock, node1, node2)                                                   \
+    ({                                                                                   \
+        acquire_spinlock(lock);                                                          \
+        ListNode* __t = _merge_list(node1, node2);                                       \
+        release_spinlock(lock);                                                          \
+        __t;                                                                             \
     })
-#define insert_into_list(lock, list, node)             \
-    ({                                                 \
-        acquire_spinlock(lock);                        \
-        ListNode *__t = _insert_into_list(list, node); \
-        release_spinlock(lock);                        \
-        __t;                                           \
+#define insert_into_list(lock, list, node)                                               \
+    ({                                                                                   \
+        acquire_spinlock(lock);                                                          \
+        ListNode* __t = _insert_into_list(list, node);                                   \
+        release_spinlock(lock);                                                          \
+        __t;                                                                             \
     })
-#define detach_from_list(lock, node)             \
-    ({                                           \
-        acquire_spinlock(lock);                  \
-        ListNode *__t = _detach_from_list(node); \
-        release_spinlock(lock);                  \
-        __t;                                     \
+#define detach_from_list(lock, node)                                                     \
+    ({                                                                                   \
+        acquire_spinlock(lock);                                                          \
+        ListNode* __t = _detach_from_list(node);                                         \
+        release_spinlock(lock);                                                          \
+        __t;                                                                             \
     })
 
-// Lockfree Queue: implemented as a lock-free single linked list.
-typedef struct QueueNode {
-    struct QueueNode *next;
-} QueueNode;
-// add a node to the queue and return the added node
-QueueNode *add_to_queue(QueueNode **head, QueueNode *node);
-// remove the last added node from the queue and return it
-QueueNode *fetch_from_queue(QueueNode **head);
-// remove all nodes from the queue and return them as a single list
-QueueNode *fetch_all_from_queue(QueueNode **head);
+// -------------------------------- Queue -------------------------------- //
 
 typedef struct Queue {
-    ListNode *begin;
-    ListNode *end;
-    int sz;
-    SpinLock lk;
+    ListNode* begin; // 队列头结点
+    ListNode* end;   // 队列尾结点
+    int sz;          // 队列大小
+    SpinLock lk;     // 队列锁
 } Queue;
-void queue_init(Queue *x);
-void queue_lock(Queue *x);
-void queue_unlock(Queue *x);
-void queue_push(Queue *x, ListNode *item);
-void queue_pop(Queue *x);
-ListNode *queue_front(Queue *x);
-bool queue_empty(Queue *x);
+
+void queue_init(Queue* x);
+void queue_lock(Queue* x);
+void queue_unlock(Queue* x);
+void queue_push(Queue* x, ListNode* item);
+void queue_pop(Queue* x);
+void queue_detach(Queue* x, ListNode* item);
+ListNode* queue_front(Queue* x);
+bool queue_empty(Queue* x);
+
+#define queue_push_lock(x, item)                                                         \
+    ({                                                                                   \
+        queue_lock(x);                                                                   \
+        queue_push(x, item);                                                             \
+        queue_unlock(x);                                                                 \
+    })
+#define queue_pop_lock(x)                                                                \
+    ({                                                                                   \
+        queue_lock(x);                                                                   \
+        queue_pop(x);                                                                    \
+        queue_unlock(x);                                                                 \
+    })
+#define queue_detach_lock(x, item)                                                       \
+    ({                                                                                   \
+        queue_lock(x);                                                                   \
+        queue_detach(x, item);                                                           \
+        queue_unlock(x);                                                                 \
+    })
+
+// -------------------------------- QueueNode -------------------------------- //
+
+// 无锁队列结点 (并发安全)
+typedef struct QueueNode {
+    struct QueueNode* next;
+} QueueNode;
+
+QueueNode* add_to_queue(QueueNode** head, QueueNode* node);
+QueueNode* fetch_from_queue(QueueNode** head);
+QueueNode* fetch_all_from_queue(QueueNode** head);
