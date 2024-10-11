@@ -10,7 +10,11 @@ NO_RETURN void idle_entry()
 {
     set_cpu_on();
     while (1) {
-        yield();
+        //yield();
+
+        acquire_sched_lock();
+        sched(RUNNABLE);
+
         if (panic_flag)
             break;
         arch_with_trap

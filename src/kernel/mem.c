@@ -163,7 +163,7 @@ void freerange(void* pa_start, void* pa_end) {
 void kinit() {
     init_rc(&kalloc_page_cnt);
     init_spinlock(&kmem.lock);
-    freerange((void*)K2P(end), (void*)PHYSTOP);
+    freerange((void*)end, (void*)P2K(PHYSTOP));
     init_caches();
 
 
@@ -203,7 +203,7 @@ void kfree_page(void* p) {
     decrement_rc(&kalloc_page_cnt);
     struct run *r;
 
-    if((usize)p % PAGE_SIZE || (usize)p < K2P(end) || (usize)p >= PHYSTOP) {
+    if((usize)p % PAGE_SIZE || (usize)p < (usize)end || (usize)p >= P2K(PHYSTOP)) {
         printk("kfree_page fail: p = %p\n", p);   
         return;
     }

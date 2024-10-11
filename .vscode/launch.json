@@ -1,0 +1,16 @@
+{
+    "configurations": [
+        {
+            "preLaunchTask": "os-build",
+            "MIMode": "gdb",
+            "name": "os-debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/build/src/kernel8.elf",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "miDebuggerServerAddress": "127.0.0.1:1234",
+        }
+    ]
+}

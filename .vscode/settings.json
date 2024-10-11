@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "cpu.h": "c",
+        "compare": "c",
+        "type_traits": "c",
+        "defines.h": "c"
+    }
+}

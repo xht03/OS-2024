@@ -4,6 +4,8 @@
 #include <kernel/printk.h>
 #include <common/list.h>
 
+
+// 初始化信号量
 void init_sem(Semaphore *sem, int val)
 {
     sem->val = val;
@@ -11,6 +13,8 @@ void init_sem(Semaphore *sem, int val)
     init_list_node(&sem->sleeplist);
 }
 
+// 获取信号量
+// 获取成功返回true, 失败返回false
 bool get_sem(Semaphore *sem)
 {
     bool ret = false;
@@ -23,6 +27,8 @@ bool get_sem(Semaphore *sem)
     return ret;
 }
 
+// 获取信号量的值
+// 获取后信号量的值变为0
 int get_all_sem(Semaphore *sem)
 {
     int ret = 0;
@@ -35,6 +41,7 @@ int get_all_sem(Semaphore *sem)
     return ret;
 }
 
+// 等待信号量
 bool wait_sem(Semaphore *sem)
 {
     acquire_spinlock(&sem->lock);
@@ -61,6 +68,7 @@ bool wait_sem(Semaphore *sem)
     return ret;
 }
 
+// 释放信号量，
 void post_sem(Semaphore *sem)
 {
     acquire_spinlock(&sem->lock);
