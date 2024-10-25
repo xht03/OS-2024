@@ -11,9 +11,9 @@ void trap_global_handler(UserContext *context)
     thisproc()->ucontext = context;
 
     u64 esr = arch_get_esr();
-    u64 ec = esr >> ESR_EC_SHIFT;
-    u64 iss = esr & ESR_ISS_MASK;
-    u64 ir = esr & ESR_IR_MASK;
+    u64 ec = esr >> ESR_EC_SHIFT;   // 异常类型 exception class
+    u64 iss = esr & ESR_ISS_MASK;   // 异常原因 instruction specific syndrome
+    u64 ir = esr & ESR_IR_MASK;     // 中断请求 interrupt request
 
     (void)iss;
 
@@ -43,6 +43,9 @@ void trap_global_handler(UserContext *context)
     }
 
     // TODO: stop killed process while returning to user space
+    if (thisproc()->killed){
+        exit(-1);
+    }
 }
 
 NO_RETURN void trap_error_handler(u64 type)

@@ -32,8 +32,8 @@ trap_entry:
     bl trap_global_handler
 
 
-.global trap_return
-trap_return:
+.global trap_ret
+trap_ret:
     # restore UserContext
     ldp x1, x2, [sp], #16
     ldp x3, x0, [sp], #16
@@ -58,3 +58,11 @@ trap_return:
     ldp x29, x30, [sp], #16
 
     eret
+
+
+// 实际上的 userret
+.global trap_return
+trap_return:
+
+    mov sp, x0
+    b trap_ret

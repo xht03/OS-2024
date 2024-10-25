@@ -61,30 +61,52 @@ int post_all_sem(Semaphore *sem)
     return ret;
 }
 
+
+// 等待信号量sem
+// 如果是被唤醒的, 返回true
+// 如果是自己醒来的, 返回false
+// 如果信号量的值 >= 0，则表示资源可用，当前进程可以继续执行；
+// 如果信号量的值 < 0，则表示资源不可用，当前进程需要进入等待队列并睡眠，直到信号量的值增加。
 bool _wait_sem(Semaphore *sem)
 {
+    // 尝试获取信号量，如果信号量的值大于等于0，表示资源可用，释放自旋锁并返回 true
     if (--sem->val >= 0) {
         release_spinlock(&sem->lock);
         return true;
     }
+
+    // 如果信号量的值小于0，表示资源不可用，当前进程需要进入等待队列并睡眠
     WaitData *wait = kalloc(sizeof(WaitData));
     wait->proc = thisproc();
     wait->up = false;
     _insert_into_list(&sem->sleeplist, &wait->slnode);
-    acquire_sched_lock();
+    
+    // 获取调度器锁并释放信号量的自旋锁 
+    // 将当前进程设置为睡眠状态并调用调度器选择下一个进程
     release_spinlock(&sem->lock);
+    // acquire_sched_lock();
+    acquire_sched();
     sched(SLEEPING);
+    release_sched();
+
+    // 重新获取信号量的自旋锁
     acquire_spinlock(&sem->lock); // also the lock for waitdata
+
+    // 检查当前进程是否被唤醒
+    // 当前进程已经被唤醒，可能是由于其他进程调用了 post_sem 函数
+    // 当前进程没有被唤醒，能是由于其他原因（如超时或被中断），需要增加信号量的值并从等待队列中移除该进程
     if (!wait->up) // wakeup by other sources
     {
         ASSERT(++sem->val <= 0);
         _detach_from_list(&wait->slnode);
     }
+
     release_spinlock(&sem->lock);
     bool ret = wait->up;
     kfree(wait);
     return ret;
 }
+
 
 void _post_sem(Semaphore *sem)
 {

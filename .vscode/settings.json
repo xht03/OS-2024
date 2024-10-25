@@ -3,6 +3,8 @@
         "cpu.h": "c",
         "compare": "c",
         "type_traits": "c",
-        "defines.h": "c"
+        "defines.h": "c",
+        "printk.h": "c",
+        "sem.h": "c"
     }
 }

@@ -9,6 +9,7 @@
 struct sched {
     Proc *current;  // 当前正在运行的进程，或着为空
     Proc *idle;     // 当前CPU的专属idle进程
+    Proc *pre_idle;  // 跳转到idle进程之前的进程
 };
 
 struct cpu {
@@ -20,12 +21,12 @@ struct cpu {
 extern struct cpu cpus[NCPU];
 
 struct timer {
-    bool triggered;
-    int elapse;
-    u64 _key;
-    struct rb_node_ _node;
-    void (*handler)(struct timer *);
-    u64 data;
+    bool triggered;                     // 是否触发
+    int elapse;                         // 间隔时间
+    u64 _key;                           // 
+    struct rb_node_ _node;              // 定时器的节点
+    void (*handler)(struct timer *);    // 定时器的处理函数
+    u64 data;                           // 
 };
 
 void init_clock_handler();

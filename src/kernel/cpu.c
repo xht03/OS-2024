@@ -67,11 +67,25 @@ static void hello(struct timer *t)
     set_cpu_timer(&hello_timer[cpuid()]);
 }
 
+// 在指定的 CPU 上设置一个定时器
+// 定时器在指定的时间间隔后触发
 void set_cpu_timer(struct timer *timer)
 {
+    // 如果定时器已经挂在树上，则直接返回
+    // 例如直接sched()，而不是通过定时器触发
+    if (_rb_lookup(&timer->_node, &cpus[cpuid()].timer, __timer_cmp))
+        return;
+
+    // 初始化定时器触发状态
     timer->triggered = false;
+
+    // 设置定时器触发时间 = 当前时间戳 + 定时器的间隔时间
     timer->_key = get_timestamp_ms() + timer->elapse;
+
+    // 将定时器插入到 CPU 的定时器红黑树中
     ASSERT(0 == _rb_insert(&timer->_node, &cpus[cpuid()].timer, __timer_cmp));
+
+    // 设置定时器时钟
     __timer_set_clock();
 }
 

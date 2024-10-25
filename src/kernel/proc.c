@@ -8,26 +8,30 @@
 #include <kernel/sched.h>
 
 Proc root_proc;			 // the root process
-SpinLock proc_lock;	 // lock for process tree
+
+// pid 树的根节点
+static struct rb_root_ pid_root;
+static bool pid_cmp(rb_node lnode, rb_node rnode) {
+	return container_of(lnode, Proc, pid_node)->pid < container_of(rnode, Proc, pid_node)->pid;
+}
 
 void kernel_entry();
-void proc_entry();
+void proc_entry();		// root_proc 进程跳转到这里
 
 int next_pid = 1;
 
 // 初始化第一个内核进程
 // NOTE: should call after kinit
 void init_kproc() {
-	// 初始化进程树的锁
-	init_spinlock(&proc_lock);
+
+	// 初始化 pid 树
+	rb_init(&pid_root);
 
 	// 初始化根进程
 	init_proc(&root_proc);
 	root_proc.parent = &root_proc;
 	start_proc(&root_proc, kernel_entry, 123456);
 
-	// 调试
-	printk("root process %d is created.\n", root_proc.pid);
 
 	// 初始化CPU，为每个CPU创建一个idle进程，然后将其设置为当前进程
 	for (int i = 0; i < NCPU; i++) {
@@ -36,20 +40,25 @@ void init_kproc() {
 		p->state = RUNNING;
 		cpus[i].sched.idle = p;
 		cpus[i].sched.current = p;
-
-		// 调试
-		printk("idle process %d is created for cpu %d.\n", p->pid, i);
 	}
 }
 
 // 初始化新的（用户态）进程
 void init_proc(Proc *p) {
-	acquire_spinlock(&proc_lock);
+
+	// 初始化锁
+	init_spinlock(&p->lock);
 
 	// 初始化进程信息
 	p->killed = false;
 	p->idle = false;
+
+	// 分配pid，并插入pid树
+	acquire_spinlock(&pid_root.lock);
 	p->pid = next_pid++;
+	ASSERT(0 == rb_insert_lock(&p->pid_node, &pid_root, pid_cmp));
+	release_spinlock(&pid_root.lock);
+
 	p->exitcode = 0;
 	p->state = UNUSED;
 	init_sem(&p->childexit, 0);
@@ -59,10 +68,16 @@ void init_proc(Proc *p) {
 	// 初始化调度信息
 	init_schinfo(&p->schinfo);
 
-	// 分配内核栈
-	p->kcontext = kalloc_page() + PAGE_SIZE - sizeof(KernelContext);
+	// 初始化页表
+	init_pgdir(&p->pgdir);
 
-	release_spinlock(&proc_lock);
+	// 分配内核栈、用户态上下文
+	p->kcontext = kalloc_page() + PAGE_SIZE - sizeof(KernelContext);
+	p->ucontext = kalloc_page() + PAGE_SIZE - sizeof(UserContext);
+
+	// // 因为trap_ret会将ucontext加载完, 所以直接将sp设置为用户栈底
+	p->ucontext->sp_el0 = round_up((u64)p->ucontext, PAGE_SIZE);
+
 }
 
 // 创建新的进程
@@ -70,23 +85,24 @@ Proc *create_proc() {
 	Proc *p = kalloc(sizeof(Proc));
 	init_proc(p);
 
-	// 打印每个新进程的信息 (FOR DEBUG)
-	// addr:进程结构体地址  schnode:调度结点地址 ptnode:串在父进程链表上的结点地址
-	// auto p_mask = (u64)p % 0x10000;
-	// printk("pid=%d - addr=0x%p - schnode=0x%p - ptnode=0x%p\n", p->pid,
-	// 			 (void *)p_mask, (void *)(p_mask + 0x50), (void *)(p_mask + 0x38));
-
 	return p;
 }
 
-// 设置 进程proc 的父进程为当前进程
+// 设置 进程 proc 的父进程为当前进程
 // NOTE: it's ensured that the old proc->parent = NULL
 void set_parent_to_this(Proc *proc) {
-	acquire_spinlock(&proc_lock);
+	;
 	Proc *p = thisproc();
+
+	// 把 proc 的父进程设置为当前进程
+	acquire_spinlock(&proc->lock);
 	proc->parent = p;
+	release_spinlock(&proc->lock);
+
+	// 把 proc 加入到当前进程的子进程链表中
+	acquire_spinlock(&p->lock);
 	_insert_into_list(&p->children, &proc->ptnode);
-	release_spinlock(&proc_lock);
+	release_spinlock(&p->lock);
 }
 
 // 启动进程
@@ -95,12 +111,15 @@ void set_parent_to_this(Proc *proc) {
 // 3. activate the proc and return its pid
 // NOTE: be careful of concurrency
 int start_proc(Proc *p, void (*entry)(u64), u64 arg) {
-	acquire_spinlock(&proc_lock);
+	
+	acquire_spinlock(&p->lock);
 
-	// 如果p的父进程为空，则将其父进程设置为根进程
+	// 如果 p 的父进程为空，则将其父进程设置为 root_proc
 	if (p->parent == NULL) {
 		p->parent = &root_proc;
+		acquire_spinlock(&root_proc.lock);
 		_insert_into_list(&root_proc.children, &p->ptnode);
+		release_spinlock(&root_proc.lock);
 	}
 
 	// 设置内核上下文
@@ -110,13 +129,10 @@ int start_proc(Proc *p, void (*entry)(u64), u64 arg) {
 	p->kcontext->x1 = (u64)arg;
 	p->kcontext->x30 = (u64)proc_entry;
 
-	release_spinlock(&proc_lock);
+	release_spinlock(&p->lock);
 
 	// 激活进程
 	activate_proc(p);
-
-	// 调试
-	// printk("process %d is started.\n", p->pid);
 
 	return p->pid;
 }
@@ -130,6 +146,18 @@ int wait(int *exitcode) {
 
 	// 打印子进程
 	// printk("children of process %d:\n", thisproc()->pid);
+
+	Proc *p = thisproc();
+	acquire_spinlock(&p->lock);
+
+	// 如果没有子进程，则返回-1
+	if (_empty_list(&p->children)) {
+		release_spinlock(&p->lock);
+		return -1;
+	}
+
+
+	
 	ListNode *node = thisproc()->children.next;
 	while (node != &thisproc()->children) {
 		// Proc *child = container_of(node, Proc, ptnode);
@@ -137,16 +165,8 @@ int wait(int *exitcode) {
 		// printk("  child %d\n", child->pid);
 	}
 
-	acquire_spinlock(&proc_lock);
-
-	// 如果没有子进程，则返回-1
-	if (_empty_list(&thisproc()->children)) {
-		release_spinlock(&proc_lock);
-		return -1;
-	}
-
 	for (;;) {
-		Proc *p = thisproc();
+		
 		ListNode *node = p->children.next;
 
 		// 遍历所有子进程
@@ -154,8 +174,10 @@ int wait(int *exitcode) {
 			Proc *child = container_of(node, Proc, ptnode);
 			node = node->next;
 
+			acquire_spinlock(&child->lock);
+
 			// 如果子进程已经退出，则清理子进程并返回
-			if (is_zombie(child)) {
+			if (child->state == ZOMBIE) {
 				// 调试
 				// printk("process %d 's child process %d is a zombie and will be
 				// released.\n",
@@ -163,6 +185,7 @@ int wait(int *exitcode) {
 
 				// 保存子进程的pid
 				int child_pid = child->pid;
+				rb_erase_lock(&child->pid_node, &pid_root);
 
 				// 保存退出状态
 				if (exitcode != 0) *exitcode = child->exitcode;
@@ -170,22 +193,30 @@ int wait(int *exitcode) {
 				// 从父进程的子进程链表中移除
 				_detach_from_list(&child->ptnode);
 
+				// 释放子进程的页表
+				free_pgdir(&child->pgdir);
+
 				// 释放子进程的资源
 				kfree_page(
 						(void *)round_up((u64)child->kcontext - PAGE_SIZE, PAGE_SIZE));
+				kfree_page(
+						(void *)round_up((u64)child->ucontext - PAGE_SIZE, PAGE_SIZE));
 
 				// 释放子进程的内存
+				release_spinlock(&child->lock);
 				kfree(child);
 
-				release_spinlock(&proc_lock);
+				release_spinlock(&p->lock);
 				return child_pid;
 			}
+			// 如果子进程没有退出，则释放锁
+			release_spinlock(&child->lock);
 		}
 
 		// 如果没有子进程退出，则等待
-		release_spinlock(&proc_lock);
+		release_spinlock(&p->lock);
 		wait_sem(&thisproc()->childexit);
-		acquire_spinlock(&proc_lock);
+		acquire_spinlock(&p->lock);
 	}
 
 	printk("Should not reach here!\n");
@@ -204,6 +235,8 @@ NO_RETURN void exit(int code) {
 	}
 
 	// 如果进程p有子进程，则将其子进程的父进程设置为根进程
+	acquire_spinlock(&p->lock);
+
 	if (_empty_list(&p->children) == false) {
 		ListNode *node = p->children.next;
 		while (node != &p->children) {
@@ -211,26 +244,60 @@ NO_RETURN void exit(int code) {
 			node = node->next;
 
 			// 将子进程的父进程设置为根进程
+			acquire_spinlock(&child->lock);
 			child->parent = &root_proc;
-			_insert_into_list(&root_proc.children, &child->ptnode);
+			{
+				acquire_spinlock(&root_proc.lock);
+				_insert_into_list(&root_proc.children, &child->ptnode);
+				release_spinlock(&root_proc.lock);
+			}
+			release_spinlock(&child->lock);
+
+			// 唤醒 root_proc
 			activate_proc(&root_proc);
 		}
 	}
 
 	post_sem(&p->parent->childexit);	// 释放父进程的信号量
-	p->exitcode = code;								// 设置退出状态
+	p->exitcode = code;					// 设置退出状态
+
+	release_spinlock(&p->lock);
+
+	// free_pgdir(&p->pgdir);	// 释放页表
 
 	// 调度进程
-	acquire_sched_lock();
+	// acquire_sched_lock();
+	acquire_sched();
 	sched(ZOMBIE);
+	release_sched();
 
 	printk("Should not reach here!\n");
 	PANIC();	// prevent the warning of 'no_return function returns'
 }
 
+
+// 通过 pid 来杀死进程
+// Set the killed flag of the proc to true and return 0.
+// Return -1 if the pid is invalid (proc not found).
 int kill(int pid) {
-	// TODO:
-	// Set the killed flag of the proc to true and return 0.
-	// Return -1 if the pid is invalid (proc not found).
-	return 0;
+
+	// 确保不是root_proc和idle进程
+    ASSERT(pid > 1 + NCPU);
+
+    // 从pid树中查找进程
+    Proc pid_p = { .pid = pid };
+    auto node_p = rb_lookup_lock(&pid_p.pid_node, &pid_root, pid_cmp);
+    if (node_p == NULL)
+        return -1;
+
+    auto p = container_of(node_p, Proc, pid_node);
+
+    acquire_spinlock(&p->lock); // *
+    p->killed = true;
+    release_spinlock(&p->lock); // *
+
+    // 唤醒如果在睡眠的进程
+    activate_proc(p);
+
+    return 0;
 }

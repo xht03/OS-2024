@@ -12,4 +12,4 @@ unsigned rand();
 void srand(unsigned seed);
 
 // syscall
-u64 syscall_myreport(u64 id);
+u64 myreport(u64 id);

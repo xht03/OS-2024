@@ -10,9 +10,10 @@ enum procstate { UNUSED, RUNNABLE, RUNNING, SLEEPING, ZOMBIE };
 
 typedef struct UserContext {
     // Special Regs
-    u64 sp;     // Stack Pointer
-    u64 elr;    // Exception Link Register
-    u64 spsr;   // Saved Program Status Register
+    u64 sp_el0;     // Stack Pointer (sp_el0)
+    u64 spsr_el1;   // Saved Program Status Register
+    u64 elr_el1;    // Exception Link Register
+    
     
     // General Regs
     u64 x0;
@@ -53,7 +54,6 @@ typedef struct KernelContext {
     u64 x0;
     u64 x1;
 
-
     u64 x19;
     u64 x20;
     u64 x21;
@@ -66,20 +66,20 @@ typedef struct KernelContext {
     u64 x28;
     u64 x29; // Frame Pointer
     u64 x30; // Procedure Link Register
-
-
 } KernelContext;
 
 // embeded data for procs
 struct schinfo {
-    // TODO: customize your sched info
     ListNode sched_node; // 串在调度队列中的（代表当前进程的）结点
 };
 
 typedef struct Proc {
+    SpinLock lock;  // 每个进程的锁
+
     bool killed;    // 进程是否已被杀死
     bool idle;      // 是否是idle进程（是否正在等待某些事件或资源） 
     int pid;
+    struct rb_node_ pid_node;   // 进程树的节点
     int exitcode;
     enum procstate state;       // 进程状态
     Semaphore childexit;        // 
@@ -87,7 +87,7 @@ typedef struct Proc {
     ListNode ptnode;            // 进程作为子进程时，自己串在链表上的节点。 
     struct Proc *parent;        // 父进程指针
     struct schinfo schinfo;     // 调度信息
-    struct pgdir pgdir;        // 页表
+    struct pgdir pgdir;        // 进程的页表
     void *kstack;               // 内核栈
     UserContext *ucontext;      // 用户态上下文
     KernelContext *kcontext;    // 内核态上下文（也是内核栈开始处，从高到低）
