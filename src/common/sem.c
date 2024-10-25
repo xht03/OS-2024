@@ -83,11 +83,9 @@ bool _wait_sem(Semaphore *sem)
     
     // 获取调度器锁并释放信号量的自旋锁 
     // 将当前进程设置为睡眠状态并调用调度器选择下一个进程
+    acquire_sched_lock();
     release_spinlock(&sem->lock);
-    // acquire_sched_lock();
-    acquire_sched();
     sched(SLEEPING);
-    release_sched();
 
     // 重新获取信号量的自旋锁
     acquire_spinlock(&sem->lock); // also the lock for waitdata

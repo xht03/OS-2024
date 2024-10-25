@@ -5,19 +5,19 @@
 void init_sched();
 void init_schinfo(struct schinfo *);
 
+Proc *thisproc();
 bool activate_proc(Proc *);
 // bool is_zombie(Proc *);
 // bool is_unused(Proc *);
-// void acquire_sched_lock();
-// void release_sched_lock();
+ void acquire_sched_lock();
+ void release_sched_lock();
 void sched(enum procstate new_state);
 
-// lab3 
-void acquire_sched();
-void release_sched();
+// smaller lock attmept 
+// void acquire_sched();
+// void release_sched();
 
 // MUST call lock_for_sched() before sched() !!!
-// #define yield() (acquire_sched_lock(), sched(RUNNABLE))
-#define yield() (acquire_sched(), sched(RUNNABLE))
+#define yield() (acquire_sched_lock(), sched(RUNNABLE))
 
-Proc *thisproc();
+

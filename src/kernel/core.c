@@ -12,20 +12,16 @@ NO_RETURN void idle_entry()
     while (1) {
         //yield();
 
-        // acquire_sched_lock();
-        acquire_sched();
+        acquire_sched_lock();
         sched(RUNNABLE);
-        release_sched();
 
         if (panic_flag)
             break;
 
-        /*
         arch_with_trap
         {
             arch_wfi();
         }
-        */
     }
     set_cpu_off();
     arch_stop_cpu();

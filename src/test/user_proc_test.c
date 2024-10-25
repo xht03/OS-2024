@@ -91,7 +91,7 @@ void user_proc_test()
 
 
         // 跳转到 trap.S 的 trap_return
-        pids[i] = start_proc(p, trap_return, 0);
+        pids[i] = start_proc(p, trap_return, (u64)p->ucontext);
         printk("pid[%d] = %d\n", i, pids[i]);
     }
 
