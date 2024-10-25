@@ -5,6 +5,9 @@
         "type_traits": "c",
         "defines.h": "c",
         "printk.h": "c",
-        "sem.h": "c"
+        "sem.h": "c",
+        "timer.h": "c",
+        "proc.h": "c",
+        "pt.h": "c"
     }
 }

@@ -7,6 +7,9 @@
 #include <kernel/proc.h>
 #include <kernel/sched.h>
 
+#include <driver/memlayout.h>
+#include <kernel/pt.h>
+
 Proc root_proc;			 // the root process
 
 // pid 树的根节点
@@ -56,11 +59,12 @@ void init_proc(Proc *p) {
 	// 分配pid，并插入pid树
 	acquire_spinlock(&pid_root.lock);
 	p->pid = next_pid++;
-	ASSERT(0 == rb_insert_lock(&p->pid_node, &pid_root, pid_cmp));
+	ASSERT(0 == _rb_insert(&p->pid_node, &pid_root, pid_cmp));
 	release_spinlock(&pid_root.lock);
 
 	p->exitcode = 0;
 	p->state = UNUSED;
+
 	init_sem(&p->childexit, 0);
 	init_list_node(&p->children);
 	init_list_node(&p->ptnode);
@@ -141,11 +145,6 @@ int start_proc(Proc *p, void (*entry)(u64), u64 arg) {
 // 如果没有子进程，则返回 -1
 // 保存退出状态到exitcode 并返回其pid
 int wait(int *exitcode) {
-	// 调试
-	// printk("process %d is waiting.\n", thisproc()->pid);
-
-	// 打印子进程
-	// printk("children of process %d:\n", thisproc()->pid);
 
 	Proc *p = thisproc();
 	acquire_spinlock(&p->lock);
@@ -198,9 +197,9 @@ int wait(int *exitcode) {
 
 				// 释放子进程的资源
 				kfree_page(
-						(void *)round_up((u64)child->kcontext - PAGE_SIZE, PAGE_SIZE));
+						(void *)round_down((u64)child->kcontext - 1, PAGE_SIZE));
 				kfree_page(
-						(void *)round_up((u64)child->ucontext - PAGE_SIZE, PAGE_SIZE));
+						(void *)round_down((u64)child->ucontext - 1, PAGE_SIZE));
 
 				// 释放子进程的内存
 				release_spinlock(&child->lock);
@@ -215,7 +214,7 @@ int wait(int *exitcode) {
 
 		// 如果没有子进程退出，则等待
 		release_spinlock(&p->lock);
-		wait_sem(&thisproc()->childexit);
+		wait_sem(&p->childexit);
 		acquire_spinlock(&p->lock);
 	}
 
@@ -260,7 +259,6 @@ NO_RETURN void exit(int code) {
 
 	post_sem(&p->parent->childexit);	// 释放父进程的信号量
 	p->exitcode = code;					// 设置退出状态
-
 	release_spinlock(&p->lock);
 
 	// free_pgdir(&p->pgdir);	// 释放页表
