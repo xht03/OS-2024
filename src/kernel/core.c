@@ -30,9 +30,14 @@ NO_RETURN void idle_entry()
 NO_RETURN void kernel_entry()
 {
     printk("Hello world! (Core %lld)\n", cpuid());
-    vm_test();
-    user_proc_test();
-    //proc_test();
+    // proc_test();
+    // vm_test();
+    // user_proc_test();
+    io_test();
+
+    /* LAB 4 TODO 3 BEGIN */
+    
+    /* LAB 4 TODO 3 END */
 
     while (1)
         yield();
