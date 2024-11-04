@@ -41,10 +41,6 @@ void init_schinfo(struct schinfo* p) { return; }
 void acquire_sched_lock() { acquire_spinlock(&sched_lock); }
 void release_sched_lock() { release_spinlock(&sched_lock); }
 
-// lab3
-// void acquire_sched() { cancel_cpu_timer(&sched_timer[cpuid()]); }
-// void release_sched() { }
-
 /*
 
 // 判断进程是否为僵尸进程
