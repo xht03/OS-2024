@@ -8,10 +8,10 @@
 #define B_DIRTY 0x4 // Buffer needs to be written to disk.
 
 typedef struct {
-    int flags;
-    u8 data[BSIZE];
-    u32 block_no;
+    int flags;          // 标志位 B_VALID or B_DIRTY
+    u8 data[BSIZE];     // 缓冲区数据
+    u32 block_no;       // 硬盘编号
 
-    /* @todo: It depends on you to add other necessary elements. */
-    Semaphore sem;
+    int disk;           // 虚拟硬盘是否正在处理buf
+    Semaphore sem;      // 信号量
 } Buf;

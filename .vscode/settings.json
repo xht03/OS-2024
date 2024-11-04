@@ -8,6 +8,9 @@
         "sem.h": "c",
         "timer.h": "c",
         "proc.h": "c",
-        "pt.h": "c"
+        "pt.h": "c",
+        "string.h": "c",
+        "interrupt.h": "c",
+        "virtio.h": "c"
     }
 }

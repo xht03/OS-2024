@@ -3,6 +3,9 @@
 #include <kernel/printk.h>
 #include <kernel/sched.h>
 #include <test/test.h>
+#include <common/buf.h>
+#include <driver/virtio.h>
+
 
 volatile bool panic_flag;
 
@@ -33,11 +36,17 @@ NO_RETURN void kernel_entry()
     // proc_test();
     // vm_test();
     // user_proc_test();
-    io_test();
-
+    
     /* LAB 4 TODO 3 BEGIN */
+
+    Buf MBR_buf;
+    MBR_buf.flags = 0;
+    MBR_buf.block_no = 0;
+    virtio_blk_rw(&MBR_buf);
     
     /* LAB 4 TODO 3 END */
+
+    io_test();
 
     while (1)
         yield();

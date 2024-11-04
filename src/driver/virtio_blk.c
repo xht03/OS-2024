@@ -108,13 +108,22 @@ int virtio_blk_rw(Buf *b)
     disk.virtq.avail->ring[disk.virtq.avail->idx % NQUEUE] = d0;
     disk.virtq.avail->idx++;
 
-    disk.virtq.info[d0].buf = b->data;
+    // 通知 virtio_blk_intr() 有新请求
+    b->disk = 1;
+    disk.virtq.info[d0].buf = b;
 
     arch_fence();
     REG(VIRTIO_REG_QUEUE_NOTIFY) = 0;
     arch_fence();
 
     /* LAB 4 TODO 1 BEGIN */
+
+    // 等待硬盘中断 virtio_blk_intr() 通知请求已完成
+    while(b->disk == true) {
+        release_spinlock(&disk.lk);
+        wait_sem(&b->sem);
+        acquire_spinlock(&disk.lk);
+    }
     
     /* LAB 4 TODO 1 END */
 
@@ -139,6 +148,12 @@ static void virtio_blk_intr()
         }
 
         /* LAB 4 TODO 2 BEGIN */
+
+        // 通知 virtio_blk_rw() 请求已完成
+        Buf *b = (Buf *)disk.virtq.info[d0].buf;
+        b->disk = false;
+        post_sem(&b->sem);
+        
     
         /* LAB 4 TODO 2 END */
 
