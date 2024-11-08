@@ -67,7 +67,7 @@ int post_all_sem(Semaphore *sem)
 // 如果是自己醒来的, 返回false
 // 如果信号量的值 >= 0，则表示资源可用，当前进程可以继续执行；
 // 如果信号量的值 < 0，则表示资源不可用，当前进程需要进入等待队列并睡眠，直到信号量的值增加。
-bool _wait_sem(Semaphore *sem)
+bool _wait_sem(Semaphore *sem, bool alertable)
 {
     // 尝试获取信号量，如果信号量的值大于等于0，表示资源可用，释放自旋锁并返回 true
     if (--sem->val >= 0) {
@@ -85,9 +85,7 @@ bool _wait_sem(Semaphore *sem)
     // 将当前进程设置为睡眠状态并调用调度器选择下一个进程
     acquire_sched_lock();
     release_spinlock(&sem->lock);
-    sched(SLEEPING);
-
-    // 重新获取信号量的自旋锁
+    sched(alertable ? SLEEPING : DEEPSLEEPING);
     acquire_spinlock(&sem->lock); // also the lock for waitdata
 
     // 检查当前进程是否被唤醒
