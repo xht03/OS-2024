@@ -6,7 +6,9 @@
 #include <common/rbtree.h>
 #include <kernel/pt.h>
 
+
 enum procstate { UNUSED, RUNNABLE, RUNNING, SLEEPING, DEEPSLEEPING, ZOMBIE };
+
 
 typedef struct UserContext {
     // Special Regs
@@ -47,12 +49,15 @@ typedef struct UserContext {
     u64 x28;
     u64 x29; // Frame Pointer
     u64 x30; // Procedure Link Register
+
+    u64 kernel_sp; // Kernel Stack Pointer
+
 } UserContext;
 
+
 typedef struct KernelContext {
-    // TODO: customize your context
-    u64 x0;
-    u64 x1;
+    u64 x0; // start_proc 第一个参数
+    u64 x1; // start_proc 第二个参数
 
     u64 x19;
     u64 x20;
@@ -68,6 +73,8 @@ typedef struct KernelContext {
     u64 x30; // Procedure Link Register
 } KernelContext;
 
+
+// 进程调度信息
 // embeded data for procs
 struct schinfo {
     ListNode sched_node; // 串在调度队列中的（代表当前进程的）结点
@@ -88,9 +95,9 @@ typedef struct Proc {
     struct Proc *parent;        // 父进程指针
     struct schinfo schinfo;     // 调度信息
     struct pgdir pgdir;        // 进程的页表
-    void *kstack;               // 内核栈
-    UserContext *ucontext;      // 用户态上下文
+
     KernelContext *kcontext;    // 内核态上下文（也是内核栈开始处，从高到低）
+    UserContext *ucontext;      // 用户态上下文
 } Proc;
 
 void init_kproc();

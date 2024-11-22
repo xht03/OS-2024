@@ -1,5 +1,6 @@
 {
     "files.associations": {
+        "*.S": "arm",
         "cpu.h": "c",
         "compare": "c",
         "type_traits": "c",
@@ -11,6 +12,16 @@
         "pt.h": "c",
         "string.h": "c",
         "interrupt.h": "c",
-        "virtio.h": "c"
+        "virtio.h": "c",
+        "array": "c",
+        "charconv": "c",
+        "functional": "c",
+        "ratio": "c",
+        "tuple": "c",
+        "utility": "c",
+        "variant": "c",
+        "memlayout.h": "c",
+        "cache.h": "c",
+        "*.ipp": "cpp"
     }
 }

@@ -4,137 +4,44 @@
 #include <fs/block_device.h>
 #include <fs/defines.h>
 
-/**
-    @brief maximum number of distinct blocks that one atomic operation can hold.
- */
-#define OP_MAX_NUM_BLOCKS 10
 
-/**
-    @brief the threshold of block cache to start eviction.
+#define OP_MAX_NUM_BLOCKS 10    // 文件系统单次可写入的最大块数
 
-    if the number of cached blocks is no less than this threshold, we can
-    evict some blocks in `acquire` to keep block cache small.
- */
-#define EVICTION_THRESHOLD 20
+#define EVICTION_THRESHOLD 20   // 块缓存开始驱逐的阈值 (缓存中的块数超过这个值时，开始进行缓存块的回收)
 
-/**
-    @brief a block in block cache.
-
-    @note you can add any member to this struct as you want.
- */
+// 缓存块
 typedef struct {
-    /**
-        @brief the corresponding block number on disk.
+    usize block_no;     // 硬盘块号
+    ListNode node;      // 链表节点
+    usize ref_cnt;      // 引用计数
 
-        @note should be protected by the global lock of the block cache.
+    // bool acquired;
 
-        @note required by our test. Do NOT remove it.
-     */
-    usize block_no;
+    bool pinned;            // 是否被固定 (固定则不应被驱逐)
 
-    /**
-        @brief list this block into a linked list.
+    SleepLock lock;         // 睡眠锁 (保护valid和data) 
 
-        @note should be protected by the global lock of the block cache.
-     */
-    ListNode node;
-
-    /**
-        @brief is the block already acquired by some thread or process?
-
-        @note should be protected by the global lock of the block cache.
-     */
-    bool acquired;
-
-    /**
-        @brief is the block pinned?
-
-        A pinned block should not be evicted from the cache.
-
-        e.g. it is dirty.
-
-        @note should be protected by the global lock of the block cache.
-     */
-    bool pinned;
-
-    /**
-        @brief the sleep lock protecting `valid` and `data`.
-     */
-    SleepLock lock;
-
-    /**
-        @brief is the content of block loaded from disk?
-
-        You may find it useless and it *is*. It is just a test flag read
-        by our test. In your code, you should:
-
-        * set `valid` to `false` when you allocate a new `Block` struct.
-        * set `valid` to `true` only after you load the content of block from
-       disk.
-
-        @note required by our test. Do NOT remove it.
-     */
-    bool valid;
-    /**
-        @brief the real in-memory content of the block on disk.
-     */
-    u8 data[BLOCK_SIZE];
+    bool valid;             // 数据是否有效
+    
+    u8 data[BLOCK_SIZE];    // 缓存块数据
 } Block;
 
-/**
-    @brief an atomic operation context.
 
-    @note add any member to this struct as you want.
-
-    @see begin_op, end_op
- */
+// 日志状态
 typedef struct {
-    /**
-        @brief how many operation remains in this atomic operation?
-
-        If `rm` is 0, any **new** `sync` will panic.
-     */
-    usize rm;
-    /**
-        @brief a timestamp (i.e. an ID) to identify this atomic operation.
-
-        @note your implementation does NOT have to use this field, just ignoring
-       it is OK too.
-
-        @note only required by our test. Do NOT remove it.
-     */
-    usize ts;
+    
+    usize rm;   // 事务剩余可写块数
+    usize ts;   // 时间戳     
 } OpContext;
 
 
+// 缓存块操作
 typedef struct {
-    /**
-        @return the number of cached blocks at this moment.
+    usize (*get_num_cached_blocks)();   // 获取已缓存块数
 
-        @note only required by our test to print statistics.
-     */
-    usize (*get_num_cached_blocks)();
+    Block *(*acquire)(usize block_no);  // 获取缓存块
 
-    /**
-        @brief declare a block as acquired by the caller.
-
-        It reads the content of block at `block_no` from disk, and locks the
-       block so that the caller can exclusively modify it.
-
-        @return the pointer to the locked block.
-
-        @see `release` - the counterpart of this function.
-     */
-    Block *(*acquire)(usize block_no);
-
-    /**
-        @brief declare an acquired block as released by the caller.
-
-        It unlocks the block so that other threads can acquire it again.
-
-        @note it does not need to write the block content back to disk.
-     */
-    void (*release)(Block *block);
+    void (*release)(Block *block);      // 释放缓存块
 
     // # NOTES FOR ATOMIC OPERATIONS
     //
@@ -147,48 +54,12 @@ typedef struct {
     // `end_op` commits an atomic operation, and waits for it to be
     // checkpointed.
 
-    /**
-        @brief begin a new atomic operation and initialize `ctx`.
 
-        If there are too many running operations (i.e. our logging is
-        too small to hold all of them), `begin_op` should sleep until
-        we can start a new operation.
+    void (*begin_op)(OpContext *ctx);               // 开始文件事务
 
-        @param[out] ctx the context to be initialized.
+    void (*sync)(OpContext *ctx, Block *block);     // 将缓存中的数据同步到磁盘 (确保所有脏数据块都被写入磁)
 
-        @throw panic if `ctx` is NULL.
-
-        @see `end_op` - the counterpart of this function.
-     */
-    void (*begin_op)(OpContext *ctx);
-
-    /**
-        @brief synchronize the content of `block` to disk.
-
-        If `ctx` is NULL, it immediately writes the content of `block` to disk.
-
-        However this is very dangerous, since it may break atomicity of
-        concurrent atomic operations. YOU SHOULD USE THIS MODE WITH CARE.
-
-        @param ctx the atomic operation context to which this block belongs.
-
-        @note the caller must hold the lock of `block`.
-
-        @throw panic if the number of blocks associated with `ctx` is larger
-                than `OP_MAX_NUM_BLOCKS` after `sync`
-     */
-    void (*sync)(OpContext *ctx, Block *block);
-
-    /**
-        @brief end the atomic operation managed by `ctx`.
-
-        It sleeps until all associated blocks are written to disk.
-
-        @param ctx the atomic operation context to be ended.
-
-        @throw panic if `ctx` is NULL.
-     */
-    void (*end_op)(OpContext *ctx);
+    void (*end_op)(OpContext *ctx);                 // 结束文件事务
 
     // # NOTES FOR BITMAP
     //
@@ -199,57 +70,15 @@ typedef struct {
     // in bitmap. therefore when we allocate a new block, it usually returns a
     // data block. however, nobody can prevent you freeing a non-data block :)
 
-    /**
-        @brief allocate a new zero-initialized block.
+    
+    usize (*alloc)(OpContext *ctx);                 // 从硬盘中分配一个块，返回块号
 
-        It searches bitmap for a free block, mark it allocated and
-        returns the block number.
-
-        @param ctx since this function may write on-disk bitmap, it must be
-                   associated with an atomic operation.
-                   The caller must ensure that `ctx` is **running**.
-
-        @return the block number of the allocated block.
-
-        @note you should use `acquire`, `sync` and `release` to do disk I/O
-                here.
-
-        @throw panic if there is no free block on disk.
-     */
-    usize (*alloc)(OpContext *ctx);
-
-    /**
-        @brief free the block at `block_no` in bitmap.
-
-        It will NOT panic if `block_no` is already free or invalid.
-
-        @param ctx since this function may write on-disk bitmap, it must be
-                   associated with an atomic operation.
-                   The caller must ensure that `ctx` is **running**.
-        @param block_no the block number to be freed.
-
-        @note you should use `acquire`, `sync` and `release` to do disk I/O
-                here.
-     */
-    void (*free)(OpContext *ctx, usize block_no);
+    void (*free)(OpContext *ctx, usize block_no);   // 释放硬盘块
 } BlockCache;
 
-/**
-    @brief the global block cache instance.
- */
 extern BlockCache bcache;
 
-/**
-    @brief initialize the block cache.
 
-    This method is also responsible for restoring logs after system crash,
-
-    i.e. it should read the uncommitted blocks from log section and
-    write them back to their original positions.
-
-    @param sblock the loaded super block.
-    @param device the initialized block device.
-
-    @note You may want to put it into `*_init` method groups.
- */
+// 初始化块缓存 (block cache)
+// 需要在系统崩溃后恢复日志 (从日志部分读取未提交的块并将它们写回到原始位置)
 void init_bcache(const SuperBlock *sblock, const BlockDevice *device);

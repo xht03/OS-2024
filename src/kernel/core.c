@@ -15,7 +15,7 @@ NO_RETURN void idle_entry()
     while (1) {
         //yield();
 
-        acquire_sched_lock();
+        acquire_sched();
         sched(RUNNABLE);
 
         if (panic_flag)

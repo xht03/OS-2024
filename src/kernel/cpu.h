@@ -7,9 +7,8 @@
 
 // 每个CPU的自定义调度信息
 struct sched {
-    Proc *current;  // 当前正在运行的进程，或着为空
-    Proc *idle;     // 当前CPU的专属idle进程
-    Proc *pre_idle;  // 跳转到idle进程之前的进程
+    Proc *proc;  // 当前正在运行的进程（可以为空）
+    Proc *pre_proc;  // 跳转到idle进程之前的进程
 };
 
 struct cpu {

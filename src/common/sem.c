@@ -5,6 +5,10 @@
 #include <common/list.h>
 
 
+// 函数名前有下划线的：没有加锁
+// 函数名前没有下划线的：有锁版本
+
+
 // 初始化信号量
 void init_sem(Semaphore *sem, int val)
 {
@@ -13,16 +17,12 @@ void init_sem(Semaphore *sem, int val)
     init_list_node(&sem->sleeplist);
 }
 
-void _lock_sem(Semaphore *sem)
-{
-    acquire_spinlock(&sem->lock);
-}
 
-void _unlock_sem(Semaphore *sem)
-{
-    release_spinlock(&sem->lock);
-}
+void _lock_sem(Semaphore *sem) { acquire_spinlock(&sem->lock); }
+void _unlock_sem(Semaphore *sem) { release_spinlock(&sem->lock); }
 
+
+// 尝试获取信号量sem（调用时需要先拿锁）
 bool _get_sem(Semaphore *sem)
 {
     bool ret = false;
@@ -33,11 +33,11 @@ bool _get_sem(Semaphore *sem)
     return ret;
 }
 
-int _query_sem(Semaphore *sem)
-{
-    return sem->val;
-}
 
+int _query_sem(Semaphore *sem) { return sem->val; }
+
+
+// 获取信号量sem的所有值
 int get_all_sem(Semaphore *sem)
 {
     int ret = 0;
@@ -49,6 +49,7 @@ int get_all_sem(Semaphore *sem)
     _unlock_sem(sem);
     return ret;
 }
+
 
 int post_all_sem(Semaphore *sem)
 {
@@ -69,41 +70,48 @@ int post_all_sem(Semaphore *sem)
 // 如果信号量的值 < 0，则表示资源不可用，当前进程需要进入等待队列并睡眠，直到信号量的值增加。
 bool _wait_sem(Semaphore *sem, bool alertable)
 {
-    // 尝试获取信号量，如果信号量的值大于等于0，表示资源可用，释放自旋锁并返回 true
+    // 尝试获取信号量
+    // 如果资源可用，释放自旋锁并返回 true
     if (--sem->val >= 0) {
         release_spinlock(&sem->lock);
         return true;
     }
 
-    // 如果信号量的值小于0，表示资源不可用，当前进程需要进入等待队列并睡眠
+
+    // 如果资源不可用，当前进程需要进入等待队列并睡眠
     WaitData *wait = kalloc(sizeof(WaitData));
     wait->proc = thisproc();
     wait->up = false;
     _insert_into_list(&sem->sleeplist, &wait->slnode);
     
-    // 获取调度器锁并释放信号量的自旋锁 
+
+    // 先获取调度器的锁，再释放信号量的锁
     // 将当前进程设置为睡眠状态并调用调度器选择下一个进程
-    acquire_sched_lock();
+    acquire_sched();
     release_spinlock(&sem->lock);
     sched(alertable ? SLEEPING : DEEPSLEEPING);
-    acquire_spinlock(&sem->lock); // also the lock for waitdata
+    
+    
+    // 当前进程被唤醒后，重新获取信号量的锁
+    acquire_spinlock(&sem->lock);
 
-    // 检查当前进程是否被唤醒
-    // 当前进程已经被唤醒，可能是由于其他进程调用了 post_sem 函数
-    // 当前进程没有被唤醒，能是由于其他原因（如超时或被中断），需要增加信号量的值并从等待队列中移除该进程
+
+    // 如果不是被信号量唤醒的
     if (!wait->up) // wakeup by other sources
     {
         ASSERT(++sem->val <= 0);
         _detach_from_list(&wait->slnode);
     }
 
-    release_spinlock(&sem->lock);
+
+    // 被唤醒
+    release_spinlock(&sem->lock);   // 释放信号量锁
     bool ret = wait->up;
     kfree(wait);
     return ret;
 }
 
-
+// 释放信号量sem，唤醒一个等待的进程
 void _post_sem(Semaphore *sem)
 {
     if (++sem->val <= 0) {

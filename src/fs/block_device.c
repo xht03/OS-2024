@@ -1,5 +1,7 @@
 #include <driver/virtio.h>
 #include <fs/block_device.h>
+#include <common/string.h>
+#include <common/buf.h>
 
 /**
     @brief a simple implementation of reading a block from SD card.

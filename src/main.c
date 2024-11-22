@@ -17,35 +17,30 @@ static volatile bool boot_secondary_cpus = false;
 void main()
 {
     if (cpuid() == 0) {
-        /* @todo: Clear BSS section.*/
         extern char edata[], end[];
         memset(edata, 0, (usize)(end - edata));
 
-        /* Initialize interrupt handler. */
-        init_interrupt();
+        init_interrupt();       // 初始化中断处理函数
 
-        uart_init();
-        printk_init();
+        uart_init();            // 初始化终端 (UART)
+        printk_init();          // 初始化printk
 
         gicv3_init();
         gicv3_init_percpu();
 
-        init_clock_handler();
+        init_clock_handler();   // 初始化时钟中断处理函数
 
-        /* Initialize kernel memory allocator. */
-        kinit();
+        kinit();                // 初始化内核内存分配器
 
-        /* Initialize sched. */
-        init_sched();
+        init_sched();           // 初始化调度器
 
-        /* Initialize kernel proc. */
-        init_kproc();
+        init_kproc();           // 初始化第一个内核进程 (root_proc)
 
-        virtio_init();
+        virtio_init();          // 初始化virtio设备
 
-        smp_init();
+        smp_init();             // 初始化多核处理器
 
-        arch_fence();
+        arch_fence();           // 内存屏障
 
         // Set a flag indicating that the secondary CPUs can start executing.
         boot_secondary_cpus = true;
@@ -54,10 +49,9 @@ void main()
             ;
         arch_fence();
         gicv3_init_percpu();
-
-        /* @todo: Print "Hello, world! (Core <core id>)" */
-        printk("Hello, world! (Core %llu)\n", cpuid());
     }
 
+    // Start the first process
+    // 设置跳转入口为idle_entry
     set_return_addr(idle_entry);
 }

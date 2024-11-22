@@ -7,14 +7,18 @@
 #include <kernel/sched.h>
 
 extern bool panic_flag; // 是否处于恐慌状态
-extern SpinLock proc_lock; // 进程锁
 
-static Queue sched_queue; // 调度队列
-static SpinLock sched_lock; // 调度器的锁
+extern Proc idle_proc[NCPU]; // 每个CPU的idle进程
 
-// 调度器的定时器
-static struct timer sched_timer[NCPU];
-static void time_sched(struct timer* t) { sched(RUNNABLE); }
+static Queue sched_queue; // 调度队列（先拿锁，再使用）
+
+static struct timer sched_timer[NCPU];  // 调度器的定时器
+
+// 定时器调度函数
+static void time_sched(struct timer* t) { 
+    acquire_sched();
+    sched(RUNNABLE); 
+}
 
 // 切换进程上下文
 extern void swtch(KernelContext** old_ctx, KernelContext* new_ctx);
@@ -22,7 +26,6 @@ extern void swtch(KernelContext** old_ctx, KernelContext* new_ctx);
 // 初始化调度器
 void init_sched()
 {
-    init_spinlock(&sched_lock); // 初始化调度器的锁
     queue_init(&sched_queue); // 初始化调度队列
 
     // 初始化调度定时器
@@ -33,56 +36,41 @@ void init_sched()
 }
 
 // 返回当前进程的指针
-Proc* thisproc() { return cpus[cpuid()].sched.current; }
+Proc* thisproc() { return cpus[cpuid()].sched.proc; }
 
 // 为每个新进程，初始化自定义的 schinfo 调度信息
-void init_schinfo(struct schinfo* p) { return; }
+void init_schinfo(struct schinfo* p) { init_list_node(&p->sched_node); }
 
-void acquire_sched_lock() { acquire_spinlock(&sched_lock); }
-void release_sched_lock() { release_spinlock(&sched_lock); }
 
-/*
-
-// 判断进程是否为僵尸进程
-bool is_zombie(Proc *p)
-{
-    bool r;
-    r = p->state == ZOMBIE;
-    return r;
+void acquire_sched() {
+    
+    // 如果不是 idle 进程, 则获取当前进程锁
+    if(thisproc()->idle == false) {
+        acquire_spinlock(&thisproc()->lock);
+    }
 }
+// void release_sched() { release_spinlock(&sched_lock); }
 
-bool is_unused(Proc *p)
+
+// 唤醒进程
+// 如果进程状态是 RUNNING/RUNNABLE/ZOMBIE:      什么都不做 并返回false
+// 如果进程状态是 UNUSED/SLEEPING:              更新RUNNABLE 添加到调度队列 并返回true
+// 如果进程状态是 DEEPSLEEPING & onalert=false: 更新RUNNABLE 添加到调度队列 并返回true
+// 如果进程状态是 DEEPSLEEPING & onalert=true : 什么都不做 并返回false (unalertable_wait_sem)
+bool _activate_proc(Proc* p, bool onalert)
 {
-    bool r;
-    acquire_sched_lock();
-    r = p->state == UNUSED;
-    release_sched_lock();
-    return r;
-}
+    acquire_spinlock(&p->lock);
 
-*/
 
-// 激活进程
-// if the proc->state is RUNNING/RUNNABLE, do nothing
-// if the proc->state if SLEEPING/UNUSED, set the process state to RUNNABLE and add it to
-// the sched queue else: panic
-bool activate_proc(Proc* p)
-{
-    acquire_spinlock(&proc_lock);
-
-    // 如果进程已经是ZOMBIE状态，则直接返回
-    if (p->state == ZOMBIE) {
-        release_spinlock(&proc_lock);
+    if (p->state == RUNNING || p->state == RUNNABLE || p->state == ZOMBIE) {
+        release_spinlock(&p->lock); //*
         return false;
     }
 
-    // 如果进程已经是RUNNING或RUNNABLE状态，则直接返回
-    if (p->state == RUNNING || p->state == RUNNABLE) {
-        release_spinlock(&proc_lock);
-        return true;
-    }
 
-    if (p->state == SLEEPING || p->state == UNUSED) {
+    if ((p->state == SLEEPING || p->state == UNUSED)
+        || (p->state == DEEPSLEEPING && !onalert)) {
+        
         // 设置进程状态为RUNNABLE
         p->state = RUNNABLE;
 
@@ -91,62 +79,71 @@ bool activate_proc(Proc* p)
         queue_push(&sched_queue, &p->schinfo.sched_node);
         queue_unlock(&sched_queue);
 
-        release_spinlock(&proc_lock);
+        release_spinlock(&p->lock);
         return true;
+    }
+
+
+    if (p->state == DEEPSLEEPING && onalert) {
+        release_spinlock(&p->lock);
+        return false;
     }
 
     printk("activate_proc: unexpected state %d\n", p->state);
     PANIC();
-    return false;
 }
 
-// 更新进程状态
-// 需要持有当前进程的锁
-bool _activate_proc(Proc *p, bool onalert)
-{
-    // TODO:(Lab5 new)
-    // if the proc->state is RUNNING/RUNNABLE, do nothing and return false
-    // if the proc->state is SLEEPING/UNUSED, set the process state to RUNNABLE, add it to the sched queue, and return true
-    // if the proc->state is DEEPSLEEPING, do nothing if onalert or activate it if else, and return the corresponding value.
-}
-
+// 更新当前进程的状态为new_state (需持有进程锁)
 static void update_this_state(enum procstate new_state)
 {
     // 更新当前进程的状态
     Proc* p = thisproc();
     p->state = new_state;
 
-    // 如果进程处于SLEEPING或ZOMBIE状态，将其从调度队列中移除
-    if (new_state == SLEEPING || new_state == ZOMBIE) {
+    // 如果进程处于 SLEEPING/DEEPSLEEPING/ZOMBIE 状态，将其从调度队列中移除
+    if (new_state == SLEEPING || new_state == DEEPSLEEPING || new_state == ZOMBIE) {
         queue_lock(&sched_queue);
         queue_detach(&sched_queue, &p->schinfo.sched_node);
         queue_unlock(&sched_queue);
     }
 }
 
-// 从调度队列中选择下一个运行的进程，如果没有可运行的进程，则返回idle进程
-// 需持有 this->lock，返回时会获取 next->lock
+// 从调度队列中选择下一个运行的进程
+// (并一并获取选择的进程的锁)
 static Proc* pick_next()
 {
     // 如果调度队列为空，返回idle进程
     if (queue_empty(&sched_queue)) {
-        return cpus[cpuid()].sched.idle;
+        return &idle_proc[cpuid()];
     }
 
     // 从调度队列中选择下一个进程
     queue_lock(&sched_queue);
 
-    ListNode* node = queue_front(&sched_queue);
-    for (;;) {
-        ListNode* next = node->next;
-        Proc* p = container_of(node, Proc, schinfo.sched_node);
+    // 再次判断队列是否为空
+    // 拿锁的过程中，队列可能已经被其他CPU的进程修改
+    if (queue_empty(&sched_queue)) {
+        queue_unlock(&sched_queue);
+        return &idle_proc[cpuid()];
+    }
 
-        // 如果找到了一个RUNNABLE的进程，则将其移到队列尾部，并返回
-        if (p->state == RUNNABLE) {
-            queue_detach(&sched_queue, node);
-            queue_push(&sched_queue, node);
-            queue_unlock(&sched_queue);
-            return p;
+    ListNode* node = queue_front(&sched_queue); // 队列头部
+    for (;;) {
+        Proc* p = container_of(node, Proc, schinfo.sched_node);
+        ListNode* next = node->next;
+
+        // 如果找到了一个RUNNABLE的进程，则尝试获取其锁
+        // (抢不到就作罢，继续下一个)
+        if (p != thisproc() && p->state == RUNNABLE && try_acquire_spinlock(&p->lock)) {
+            
+            // 再次判断状态, 避免抢锁时被其他CPU修改
+            if(p->state == RUNNABLE) { 
+                queue_detach(&sched_queue, node);
+                queue_push(&sched_queue, node);
+                queue_unlock(&sched_queue);
+                return p;
+            }
+            release_spinlock(&p->lock);
         }
 
 
@@ -160,62 +157,78 @@ static Proc* pick_next()
     queue_unlock(&sched_queue);
 
     // 如果没有找到RUNNABLE的进程，则返回idle进程
-    return cpus[cpuid()].sched.idle;
+    return &idle_proc[cpuid()];
 }
-
-// 将进程 p 更新为 CPU 正在执行的进程
-static void update_this_proc(Proc* p)
-{
-    struct cpu* c = &cpus[cpuid()];
-    c->sched.current = p;
-}
-
 
 
 // 调度器（需要调度队列的锁）
-// 选择下一个进程并切换到该进程
+// 调度到下一个进程，并将当前进程的状态更新为new_state
 void sched(enum procstate new_state)
 {
-    acquire_spinlock(&proc_lock);
-
+    struct cpu *c = &cpus[cpuid()];
     Proc* this = thisproc();
+    Proc* next;
+    Proc* pre;
 
-    // 如果当前进程已经被杀死，且新状态不是ZOMBIE，则直接返回
-    if (this->killed && new_state != ZOMBIE) {
-        release_spinlock(&proc_lock);
-        // release_sched_lock();
-        return;
-    }
+    // 如果当前进程不是idle进程，则切换到idle进程
+    if(this->idle == false) {
+        
+        // 如果有终止标记, 且新状态不为ZOMBIE, 则调度器直接返回
+        if (this->killed && new_state != ZOMBIE)
+            return;
 
-    ASSERT(this->state == RUNNING);
+        // 保证当前进程是 RUNNING 状态
+        ASSERT(this->state == RUNNING);
 
-    update_this_state(new_state);
+        // 更新当前进程的状态为 new_state
+        update_this_state(new_state);
 
-    auto next = pick_next();
+        // 将CPU切换到idle进程
+        next = &idle_proc[cpuid()];
+        c->sched.proc = next;
+        c->sched.pre_proc = this;   // 记录当前进程 (用于释放锁)
 
-    update_this_proc(next);
-
-    ASSERT(next->state == RUNNABLE);
-
-    next->state = RUNNING;
-
-    release_spinlock(&proc_lock);
-
-    // 切换到下一个进程，重置定时器
-    set_cpu_timer(&sched_timer[cpuid()]);
-    if (next != this) {
-        attach_pgdir(&next->pgdir);
+        // 加载idle进程的上下文
+        attach_pgdir(&next->pgdir);  // 切换页表
         swtch(&this->kcontext, next->kcontext);
+
+        // idle进程执行完毕, 切换回当前进程后，持有锁
+        release_spinlock(&this->lock);
     }
 
-    release_sched_lock();
+    // 如果当前进程是idle进程，则选择下一个进程
+    else {
+        for(;;) {
+            // 选择下一个进程 (并获取锁)
+            next = pick_next();
+
+            // 如果还是idle进程, 则退出执行 wfi(Wait For Interrupt)
+            // (idle进程会在有中断时被唤醒)
+            if(next == this) {
+                break;
+            }
+
+            // 切换到下一个进程
+            ASSERT(next->state == RUNNABLE);
+            next->state = RUNNING;
+            c->sched.proc = next;
+            attach_pgdir(&next->pgdir);             // 切换页表
+            set_cpu_timer(&sched_timer[cpuid()]);   // 启用调度定时器
+            swtch(&this->kcontext, next->kcontext);
+
+            // 进程执行完后，切换回idle进程
+            pre = c->sched.pre_proc;
+            release_spinlock(&pre->lock);  // 释放pre进程的锁
+        }
+    }
 }
 
 u64 proc_entry(void (*entry)(u64), u64 arg)
 {
-    // 释放调度器锁
-    release_sched_lock();
+    // 释放在sched()中获取的锁
+    release_spinlock(&thisproc()->lock);
 
-    set_return_addr(entry); // 设置返回地址为entry
+    // 设置返回地址为entry
+    set_return_addr(entry);
     return arg;
 }
