@@ -169,7 +169,7 @@ static Inode* inode_get(usize inode_no) {
 }
 
 
-// 清空 inode
+// 清空 inode 所指向的文件块
 static void inode_clear(OpContext* ctx, Inode* inode) {
 
     // 释放直接块
@@ -204,12 +204,12 @@ static void inode_clear(OpContext* ctx, Inode* inode) {
 
 
 // 拷贝 inode
-// * 可能出问题
 static Inode* inode_share(Inode* inode) {
 
-    acquire_spinlock(&lock);  // 获取索引链表锁
-    increment_rc(&inode->rc); // 增加引用计数
-    release_spinlock(&lock);  // 释放索引链表锁
+    acquire_spinlock(&lock);
+    increment_rc(&inode->rc);   // 增加引用计数
+    release_spinlock(&lock);
+
     return inode;
 }
 
@@ -219,29 +219,27 @@ static void inode_put(OpContext* ctx, Inode* inode) {
 
     acquire_spinlock(&lock);
 
-    // 如果在自己释放后，inode 无人引用，则清空 inode
+    // 如果在自己释放后，inode 无人引用
     if (inode->rc.count == 1 && inode->entry.num_links == 0) {
 
+        // 清空 inode
         acquire_sleeplock(&inode->lock);
 
-        release_spinlock(&lock);
-
-        if (inode->valid) {
-            inode_clear(ctx, inode);            // 清空 inode 所指向的文件块
+        if(inode->valid) {
+            inode_clear(ctx, inode);    // 清空 inode 所指向的文件块
         }
-        inode->entry.type = INODE_INVALID;      // 设置为空闲
-        inode->valid = true;                    // 设置为有效
-        inode_sync(ctx, inode, true);           // 同步 inode 到磁盘
-        inode->valid = false;                   // 设置为无效
+        inode->entry.type = INODE_INVALID;  // 设置 inode 为无效
+        inode->valid = true;
+        inode_sync(ctx, inode, true);       // 同步 inode 到磁盘
+        inode->valid = false;
 
         release_sleeplock(&inode->lock);
 
-        acquire_spinlock(&lock);
+        _detach_from_list(&inode->node);
     }
 
     decrement_rc(&inode->rc);   // 减少引用计数
-
-    release_spinlock(&lock);    // 释放索引链表锁
+    release_spinlock(&lock);
 }
 
 /**
@@ -270,6 +268,9 @@ static void inode_put(OpContext* ctx, Inode* inode) {
 
 // 获取 inode 中指定偏移量的所在的块号
 static usize inode_map(OpContext* ctx, Inode* inode, usize offset, bool* modified) {
+    
+    // ASSERT(inode->rc.count > 0);
+    // ASSERT(inode->valid);
 
     InodeEntry* entry = &inode->entry;
     usize block_no = 0;
