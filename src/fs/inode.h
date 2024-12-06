@@ -5,10 +5,8 @@
 #include <fs/cache.h>
 #include <fs/defines.h>
 
-/**
-    @brief the number of the root inode (i.e. the inode_no of `/`).
- */
-#define ROOT_INODE_NO 1
+
+#define ROOT_INODE_NO 1     // 根目录 inode 编号
 
 /**
     @brief an inode in memory.
@@ -17,47 +15,15 @@
 
     @see Block
  */
+
+// 内存中的 inode 结构
 typedef struct {
-    /**
-        @brief the lock protecting the inode metadata and its content.
-
-        @note it does NOT protect `rc`, `node`, `valid`, etc, because they are
-        "runtime" variables, not "filesystem" metadata or data of the inode.
-     */
-    SleepLock lock;
-
-    /**
-        @brief the reference count of this inode.
-
-        Different from `Block`, an inode can be shared by multiple threads or
-        processes, so we need a reference count to track the number of
-        references to this inode.
-     */
-    RefCount rc;
-
-    /**
-        @brief link this inode into a linked list.
-     */
-    ListNode node;
-
-    /**
-        @brief the corresponding inode number on disk.
-
-        @note distinguish it from `block_no` in `Block`, which is the "block number".
-
-        `inode_no` should be the offset in block from the beginning of the inode area.
-     */
-    usize inode_no;
-
-    /**
-        @brief has the `entry` been loaded from disk?
-     */
-    bool valid;
-
-    /**
-        @brief the real in-memory copy of the inode on disk.
-     */
-    InodeEntry entry; 
+    SleepLock lock;     // 睡眠锁   用于保护 inode 的元数据和内容。注意，它不保护 rc、node、valid 等运行时变量。
+    RefCount rc;        // 引用计数 用于跟踪引用此inode的线程或进程的数量。与块不同，inode可以被多个线程或进程共享，因此需要引用计数。
+    ListNode node;      // 链表节点
+    usize inode_no;     // inode编号 注意，它与块中的block_no不同，inode_no是从inode区域开始的偏移量。
+    bool valid;         // entry 是否已经从磁盘加载内存中
+    InodeEntry entry;   // 磁盘上inode的副本 (在内存中)
 } Inode;
 
 /**
@@ -69,7 +35,7 @@ typedef struct {
 
         @see `init_inodes` should initialize it to a valid inode.
      */
-    Inode* root;
+    Inode* root;                                        // 根目录 inode
 
     /**
         @brief allocate a new zero-initialized inode on disk.
@@ -80,7 +46,7 @@ typedef struct {
 
         @throw panic if allocation fails (e.g. no more free inode).
      */
-    usize (*alloc)(OpContext* ctx, InodeType type);
+    usize (*alloc)(OpContext* ctx, InodeType type);     // 分配一个新的 inode (初始化为0)
 
     /**
         @brief acquire the sleep lock of `inode`.
@@ -92,14 +58,14 @@ typedef struct {
 
         @see `unlock` - the counterpart of this method.
      */
-    void (*lock)(Inode* inode);
+    void (*lock)(Inode* inode);                         // 获取 inode 的睡眠锁 (任何写操作之前，都应先获取锁)
 
     /**
         @brief release the sleep lock of `inode`.
         
         @see `lock` - the counterpart of this method.
      */
-    void (*unlock)(Inode* inode);
+    void (*unlock)(Inode* inode);                       // 释放 inode 的睡眠锁
 
     /**
         @brief synchronize the content of `inode` between memory and disk.
@@ -119,7 +85,7 @@ typedef struct {
 
         @throw panic if `do_write` is true and `inode` is invalid.
      */
-    void (*sync)(OpContext* ctx, Inode* inode, bool do_write);
+    void (*sync)(OpContext* ctx, Inode* inode, bool do_write);      // 同步 inode 内存和磁盘内容 (需要持有锁)
 
     /**
         @brief get an inode by its inode number.
@@ -134,7 +100,7 @@ typedef struct {
 
         @see `put` - the counterpart of this method.
      */
-    Inode* (*get)(usize inode_no);
+    Inode* (*get)(usize inode_no);                          // 通过 inode 编号获取 inode
 
     /**
         @brief truncate all contents of `inode`.
@@ -145,7 +111,7 @@ typedef struct {
 
         @note caller must hold the lock of `inode`.
      */
-    void (*clear)(OpContext* ctx, Inode* inode);
+    void (*clear)(OpContext* ctx, Inode* inode);            // 清空 inode 内容，即：释放其所有的文件块 (需要持有锁)
 
     /**
         @brief duplicate an inode.
@@ -156,7 +122,7 @@ typedef struct {
 
         @return the duplicated inode (i.e. may just return `inode`).
      */
-    Inode* (*share)(Inode* inode);
+    Inode* (*share)(Inode* inode);                          // 复制 inode
 
     /**
         @brief notify that you no longer need `inode`.
@@ -176,7 +142,7 @@ typedef struct {
 
         @see `clear` can be used to free all file blocks of `inode`.
      */
-    void (*put)(OpContext* ctx, Inode* inode);
+    void (*put)(OpContext* ctx, Inode* inode);              // 通知 inode 不再需要 (如果无人需要，则还需释放 inode)
 
     /**
         @brief read `count` bytes from `inode`, beginning at `offset`, to `dest`.
@@ -185,7 +151,7 @@ typedef struct {
 
         @note caller must hold the lock of `inode`.
      */
-    usize (*read)(Inode* inode, u8* dest, usize offset, usize count);
+    usize (*read)(Inode* inode, u8* dest, usize offset, usize count);       // 从 inode 读取数据 (需要持有锁)
 
     /**
         @brief write `count` bytes from `src` to `inode`, beginning at `offset`.
@@ -198,7 +164,7 @@ typedef struct {
                    Inode* inode,
                    u8* src,
                    usize offset,
-                   usize count);
+                   usize count);                                            // 向 inode 写入数据 (需要持有锁)
 
     /**
         @brief look up an entry named `name` in directory `inode`.
@@ -211,7 +177,7 @@ typedef struct {
 
         @throw panic if `inode` is not a directory.
      */
-    usize (*lookup)(Inode* inode, const char* name, usize* index);
+    usize (*lookup)(Inode* inode, const char* name, usize* index);          // 在 inode 中查找条目 (需要持有锁)
 
     /**
         @brief insert a new directory entry in directory `inode`.
@@ -233,7 +199,7 @@ typedef struct {
     usize (*insert)(OpContext* ctx,
                     Inode* inode,
                     const char* name,
-                    usize inode_no);
+                    usize inode_no);                                // 在 inode 中插入新的目录条目 (需要持有锁)
 
     /**
         @brief remove the directory entry at `index`.
@@ -247,13 +213,13 @@ typedef struct {
 
         @throw panic if `inode` is not a directory.
      */
-    void (*remove)(OpContext* ctx, Inode* inode, usize index);
+    void (*remove)(OpContext* ctx, Inode* inode, usize index);      // 移除 inode 中的目录条目 (需要持有锁)
 } InodeTree;
 
-/**
-    @brief the global inode layer instance.
- */
+
+// inode 层函数接口
 extern InodeTree inodes;
+
 
 /**
     @brief initialize the inode layer.
@@ -263,4 +229,4 @@ extern InodeTree inodes;
     @param sblock the loaded super block.
     @param cache the initialized block cache.
  */
-void init_inodes(const SuperBlock* sblock, const BlockCache* cache);
+void init_inodes(const SuperBlock* sblock, const BlockCache* cache);    // 初始化 inode 层

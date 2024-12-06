@@ -42,7 +42,7 @@ enum {
 };
 
 
-// 索引 (inode) 结构
+// 磁盘上的 inode 结构
 // INODE_INVALID 表示该索引是空闲的
 typedef struct dinode {
     InodeType type;                 // 索引类型
