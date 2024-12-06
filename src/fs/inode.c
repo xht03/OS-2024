@@ -236,6 +236,7 @@ static void inode_put(OpContext* ctx, Inode* inode) {
         release_sleeplock(&inode->lock);
 
         _detach_from_list(&inode->node);
+        kfree(inode);
     }
 
     decrement_rc(&inode->rc);   // 减少引用计数
