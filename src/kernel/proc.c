@@ -4,8 +4,12 @@
 #include <kernel/cpu.h>
 #include <kernel/mem.h>
 #include <kernel/printk.h>
+<<<<<<< HEAD
 #include <kernel/proc.h>
 #include <kernel/sched.h>
+=======
+#include <kernel/paging.h>
+>>>>>>> origin/final
 
 #include <driver/memlayout.h>
 #include <kernel/pt.h>
@@ -293,4 +297,34 @@ int kill(int pid) {
     // 提醒如果在睡眠的进程
     alert_proc(p);
     return 0;
+}
+
+
+int kill(int pid)
+{
+    // TODO:
+    // Set the killed flag of the proc to true and return 0.
+    // Return -1 if the pid is invalid (proc not found).
+}
+
+/*
+ * Create a new process copying p as the parent.
+ * Sets up stack to return as if from system call.
+ */
+void trap_return();
+int fork()
+{
+    /**
+     * (Final) TODO BEGIN
+     * 
+     * 1. Create a new child process.
+     * 2. Copy the parent's memory space.
+     * 3. Copy the parent's trapframe.
+     * 4. Set the parent of the new proc to the parent of the parent.
+     * 5. Set the state of the new proc to RUNNABLE.
+     * 6. Activate the new proc and return its pid.
+     */
+
+    /* (Final) TODO END */
+
 }

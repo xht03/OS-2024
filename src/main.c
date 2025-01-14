@@ -11,6 +11,9 @@
 #include <driver/gicv3.h>
 #include <driver/timer.h>
 #include <driver/virtio.h>
+#include <fs/fs.h>
+#include <kernel/console.h>
+#include <kernel/syscall.h>
 
 static volatile bool boot_secondary_cpus = false;
 
@@ -32,15 +35,23 @@ void main()
 
         kinit();                // 初始化内核内存分配器
 
-        init_sched();           // 初始化调度器
+        /* Initialize syscall. */
+        init_syscall();
 
-        init_kproc();           // 初始化第一个内核进程 (root_proc)
+        /* Initialize sched. */
+        init_sched();
 
-        virtio_init();          // 初始化virtio设备
+        virtio_init();
 
-        smp_init();             // 初始化多核处理器
+        /* Initialize kernel proc. */
+        init_kproc();
 
-        arch_fence();           // 内存屏障
+        smp_init();
+
+        /* Initialize the console. */
+        console_init();
+
+        arch_fence();
 
         // Set a flag indicating that the secondary CPUs can start executing.
         boot_secondary_cpus = true;

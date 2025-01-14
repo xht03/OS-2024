@@ -242,14 +242,6 @@ void kfree(void* ptr) {
     slab_free(ptr);
 }
 
-//-------------------- 调试：每次kalloc都直接分配一整页 --------------------
-/*
-void* kalloc(unsigned long long size) {
-    (void)size; // 标记参数为未使用
-    return kalloc_page();
+void* get_zero_page() {
+    return NULL;
 }
-
-void kfree(void* ptr) {
-    kfree_page(ptr);
-}
-*/

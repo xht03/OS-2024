@@ -5,6 +5,8 @@
 #include <common/sem.h>
 #include <common/rbtree.h>
 #include <kernel/pt.h>
+#include <fs/file.h>
+#include <fs/inode.h>
 
 
 enum procstate { UNUSED, RUNNABLE, RUNNING, SLEEPING, DEEPSLEEPING, ZOMBIE };
@@ -98,6 +100,9 @@ typedef struct Proc {
 
     KernelContext *kcontext;    // 内核态上下文（也是内核栈开始处，从高到低）
     UserContext *ucontext;      // 用户态上下文
+    
+    struct oftable oftable;
+    Inode *cwd;
 } Proc;
 
 void init_kproc();
@@ -107,3 +112,4 @@ int start_proc(Proc *, void (*entry)(u64), u64 arg);
 NO_RETURN void exit(int code);
 WARN_RESULT int wait(int *exitcode);
 WARN_RESULT int kill(int pid);
+WARN_RESULT int fork();

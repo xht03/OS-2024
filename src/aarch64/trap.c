@@ -5,6 +5,9 @@
 #include <driver/interrupt.h>
 #include <kernel/proc.h>
 #include <kernel/syscall.h>
+#include <kernel/paging.h>
+
+#define SPSR_EL1_DAIF_MASK 0xF
 
 void trap_global_handler(UserContext *context)
 {
@@ -15,16 +18,15 @@ void trap_global_handler(UserContext *context)
     u64 iss = esr & ESR_ISS_MASK;   // 异常原因 instruction specific syndrome
     u64 ir = esr & ESR_IR_MASK;     // 中断请求 interrupt request
 
-    (void)iss;
-
     arch_reset_esr();
 
     switch (ec) {
     case ESR_EC_UNKNOWN: {
         if (ir)
             PANIC();
-        else
+        else {
             interrupt_global_handler();
+        }
     } break;
     case ESR_EC_SVC64: {
         syscall_entry(context);
@@ -33,17 +35,16 @@ void trap_global_handler(UserContext *context)
     case ESR_EC_IABORT_EL1:
     case ESR_EC_DABORT_EL0:
     case ESR_EC_DABORT_EL1: {
-        printk("Page fault\n");
-        PANIC();
+        pgfault_handler(iss);
     } break;
     default: {
-        printk("Unknwon exception %llu\n", ec);
+        printk("Unknwon exception %llu\n", esr);
         PANIC();
     }
     }
-
-    // TODO: stop killed process while returning to user space
-    if (thisproc()->killed){
+    
+    // Lab4: stop killed process while returning to user space
+    if (thisproc()->killed && (context->spsr & SPSR_EL1_DAIF_MASK) == 0) {
         exit(-1);
     }
 }

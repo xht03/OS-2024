@@ -1,7 +1,7 @@
-#include <kernel/pt.h>
-#include <kernel/mem.h>
-#include <common/string.h>
 #include <aarch64/intrinsic.h>
+#include <common/string.h>
+#include <kernel/mem.h>
+#include <kernel/pt.h>
 
 PTEntriesPtr get_pte(struct pgdir *pgdir, u64 va, bool alloc)
 {
@@ -109,4 +109,28 @@ void attach_pgdir(struct pgdir *pgdir)
         arch_set_ttbr0(K2P(pgdir->pt));
     else
         arch_set_ttbr0(K2P(&invalid_pt));
+}
+
+/**
+ * Map virtual address 'va' to the physical address represented by kernel
+ * address 'ka' in page directory 'pd', 'flags' is the flags for the page
+ * table entry.
+ */
+void vmmap(struct pgdir *pd, u64 va, void *ka, u64 flags)
+{
+    /* (Final) TODO BEGIN */
+
+    /* (Final) TODO END */
+}
+
+/*
+ * Copy len bytes from p to user address va in page table pgdir.
+ * Allocate physical pages if required.
+ * Useful when pgdir is not the current page table.
+ */
+int copyout(struct pgdir *pd, void *va, void *p, usize len)
+{
+    /* (Final) TODO BEGIN */
+
+    /* (Final) TODO END */
 }
