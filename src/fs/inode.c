@@ -38,6 +38,8 @@ void init_inodes(const SuperBlock* _sblock, const BlockCache* _cache) {
     sblock = _sblock;           // 初始化超级块
     cache = _cache;             // 初始化块缓存
 
+    printk("init_inodes: num_inodes=%d\n", sblock->num_inodes);
+
     // 初始化根目录 inode (如果存在，则获取之)
     if (ROOT_INODE_NO < sblock->num_inodes)
         inodes.root = inodes.get(ROOT_INODE_NO);
@@ -165,6 +167,7 @@ static Inode* inode_get(usize inode_no) {
     init_inode(inode);
     inode->inode_no = inode_no;
     inode->rc.count = 1;
+    inode->entry.num_links = 0;
     _insert_into_list(&head, &inode->node);
     release_spinlock(&lock);
     return inode;
