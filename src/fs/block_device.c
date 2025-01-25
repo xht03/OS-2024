@@ -3,6 +3,8 @@
 #include <common/string.h>
 #include <common/buf.h>
 
+extern u32 LBA;
+
 /**
     @brief a simple implementation of reading a block from SD card.
 
@@ -11,7 +13,8 @@
  */
 static void sd_read(usize block_no, u8 *buffer) {
     Buf b;
-    b.block_no = (u32)block_no;
+    b.block_no = (u32)block_no + LBA;
+    // b.block_no = (u32)block_no;
     b.flags = 0;
     virtio_blk_rw(&b);
     memcpy(buffer, b.data, BLOCK_SIZE);
@@ -25,7 +28,8 @@ static void sd_read(usize block_no, u8 *buffer) {
  */
 static void sd_write(usize block_no, u8 *buffer) {
     Buf b;
-    b.block_no = (u32)block_no;
+    b.block_no = (u32)block_no + LBA;
+    // b.block_no = (u32)block_no;
     b.flags = B_DIRTY | B_VALID;
     memcpy(b.data, buffer, BLOCK_SIZE);
     virtio_blk_rw(&b);

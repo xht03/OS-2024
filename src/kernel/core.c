@@ -12,6 +12,8 @@
 
 volatile bool panic_flag;
 
+u32 LBA;
+
 extern char icode[], eicode[];
 
 void trap_return();
@@ -39,9 +41,6 @@ NO_RETURN void idle_entry()
 
 NO_RETURN void kernel_entry()
 {
-    init_filesystem();
-
-    printk("Hello world! (Core %lld)\n", cpuid());
     // proc_test();
     // vm_test();
     // user_proc_test();
@@ -53,6 +52,14 @@ NO_RETURN void kernel_entry()
     MBR_buf.flags = 0;
     MBR_buf.block_no = 0;
     virtio_blk_rw(&MBR_buf);
+
+    u8 * MBR = MBR_buf.data;
+    LBA = *(u32 *)(MBR + 0x1ce + 0x8);
+
+
+    init_filesystem();
+
+    printk("Hello world! (Core %lld)\n", cpuid());
     
     /* LAB 4 TODO 3 END */
 
@@ -82,6 +89,12 @@ NO_RETURN void kernel_entry()
 
     start_proc(initproc, trap_return, 0);
     printk("init proc done\n");
+    
+    while (1) {
+        int code;
+        auto pid = wait(&code);
+        (void)pid;
+    }
     
     PANIC();
 

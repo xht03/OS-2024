@@ -15,4 +15,5 @@ typedef struct {
 
     int disk;           // 虚拟硬盘是否正在处理buf
     Semaphore sem;      // 信号量
+    // bool done;
 } Buf;
