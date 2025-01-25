@@ -20,7 +20,7 @@ typedef struct UserContext {
     
     
     // General Regs
-    u64 x0;
+    u64 x0;         // Return Value
     u64 x1;
     u64 x2;
     u64 x3;
@@ -96,13 +96,13 @@ typedef struct Proc {
     ListNode ptnode;            // 进程作为子进程时，自己串在链表上的节点。 
     struct Proc *parent;        // 父进程指针
     struct schinfo schinfo;     // 调度信息
-    struct pgdir pgdir;        // 进程的页表
+    struct pgdir pgdir;         // 进程的页表
 
-    KernelContext *kcontext;    // 内核态上下文（也是内核栈开始处，从高到低）
-    UserContext *ucontext;      // 用户态上下文
+    KernelContext *kcontext;    // 内核态上下文 (也是内核栈开始处，从高到低)
+    UserContext *ucontext;      // 用户态上下文 (用户态、内核态之间切换)
     
-    struct oftable oftable;
-    Inode *cwd;
+    struct oftable oftable;     // 进程的打开文件表
+    Inode *cwd;                 // 当前工作目录
 } Proc;
 
 void init_kproc();

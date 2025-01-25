@@ -5,6 +5,7 @@
 #include <test/test.h>
 #include <aarch64/intrinsic.h>
 #include <kernel/paging.h>
+#include <kernel/sched.h>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Woverride-init"
@@ -37,7 +38,9 @@ void syscall_entry(UserContext *context)
     // 获取 系统调用号
     u64 id = context->x8;
     if(id > 0 && id < NR_SYSCALL && syscall_table[id] != NULL) {
-        context->x0 = syscall_table[id]();
+        // 将 syscall_table[id] 转换为函数指针类型，并传递参数
+        u64 (*syscall_func)(u64, u64, u64, u64, u64, u64) = syscall_table[id];
+        context->x0 = syscall_func(context->x0, context->x1, context->x2, context->x3, context->x4, context->x5);
     }
     else {
         printk("syscall id %llu is out of range\n", id);
@@ -50,9 +53,19 @@ void syscall_entry(UserContext *context)
  * user process.
  */
 bool user_readable(const void *start, usize size) {
-    /* (Final) TODO BEGIN */
+    u64 va = (u64)start;
+    u64 va_end = va + size;
+    struct pgdir *pgdir = &(thisproc()->pgdir);
 
-    /* (Final) TODO END */
+    while(va < va_end) {
+        PTEntriesPtr pte = get_pte(pgdir, va, false);
+        if(pte == NULL || !(*pte & PTE_VALID) || !(*pte & PTE_USER)) {
+            return false;
+        }
+        va += PAGE_BASE(va) + PAGE_SIZE;
+    }
+
+    return true;
 }
 
 
@@ -61,9 +74,19 @@ bool user_readable(const void *start, usize size) {
  * the current user process.
  */
 bool user_writeable(const void *start, usize size) {
-    /* (Final) TODO Begin */
+    u64 va = (u64)start;
+    u64 va_end = va + size;
+    struct pgdir *pgdir = &(thisproc()->pgdir);
 
-    /* (Final) TODO End */
+    while(va < va_end) {
+        PTEntriesPtr pte = get_pte(pgdir, va, false);
+        if(pte == NULL || !(*pte & PTE_VALID) || !(*pte & PTE_USER) || !(*pte & PTE_RW)) {
+            return false;
+        }
+        va = PAGE_BASE(va) + PAGE_SIZE;
+    }
+
+    return true;
 }
 
 /** 

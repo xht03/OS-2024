@@ -2,13 +2,15 @@
 #include <common/string.h>
 #include <kernel/mem.h>
 #include <kernel/pt.h>
+#include <kernel/printk.h>
 
 PTEntriesPtr get_pte(struct pgdir *pgdir, u64 va, bool alloc)
 {
-    // TODO:
-    // Return a pointer to the PTE (Page Table Entry) for virtual address 'va'
-    // If the entry not exists (NEEDN'T BE VALID), allocate it if alloc=true, or return NULL if false.
-    // THIS ROUTINUE GETS THE PTE, NOT THE PAGE DESCRIBED BY PTE.
+    /*
+    * Return a pointer to the PTE (Page Table Entry) for virtual address 'va'
+    * If the entry not exists (NEEDN'T BE VALID), allocate it if alloc=true, or return NULL if false.
+    * THIS ROUTINUE GETS THE PTE, NOT THE PAGE DESCRIBED BY PTE.
+    */
 
     const int levels = 4;           // 4级页表
     int index0 = VA_PART0(va);      // 最高级页表的索引 [47:39]
@@ -67,9 +69,10 @@ void init_pgdir(struct pgdir *pgdir)
 
 void free_pgdir(struct pgdir *pgdir)
 {
-    // TODO:
-    // Free pages used by the page table. If pgdir->pt=NULL, do nothing.
-    // DONT FREE PAGES DESCRIBED BY THE PAGE TABLE
+    /*
+    * Free pages used by the page table. If pgdir->pt=NULL, do nothing.
+    * DONT FREE PAGES DESCRIBED BY THE PAGE TABLE
+    */
 
     // 如果页表为空，则不做任何事情
     if (pgdir->pt == NULL) {
@@ -111,26 +114,93 @@ void attach_pgdir(struct pgdir *pgdir)
         arch_set_ttbr0(K2P(&invalid_pt));
 }
 
-/**
- * Map virtual address 'va' to the physical address represented by kernel
- * address 'ka' in page directory 'pd', 'flags' is the flags for the page
- * table entry.
- */
+// 将虚拟地址va映射到ka(ka是内核地址)所表示的物理地址
 void vmmap(struct pgdir *pd, u64 va, void *ka, u64 flags)
 {
-    /* (Final) TODO BEGIN */
+    /*
+    * 在页目录 pd 中设置相应的页表项
+    * flags 用于设置页表项的标志位
+    */
+   
+    PTEntriesPtr pte = get_pte(pd, va, true);
+    if (pte == NULL) {
+        printk("vmmap: get_pte failed\n");
+        PANIC();
+    }
+    *pte = (K2P(ka) & ~0xFFF) | (flags & 0xFFF);
 
-    /* (Final) TODO END */
+    // 刷新TLB
+    arch_tlbi_vmalle1is();
 }
 
-/*
- * Copy len bytes from p to user address va in page table pgdir.
- * Allocate physical pages if required.
- * Useful when pgdir is not the current page table.
- */
+
+// 将内核数据拷贝到用户空间
+// 成功返回0，失败返回-1
 int copyout(struct pgdir *pd, void *va, void *p, usize len)
 {
-    /* (Final) TODO BEGIN */
 
-    /* (Final) TODO END */
+    /*
+    * Copy len bytes from p to user address va in page table pgdir.
+    * Allocate physical pages if required.
+    * Useful when pgdir is not the current page table.
+    */
+    
+    u64 n = 0;                  // 一次拷贝的字节数
+    u64 va0;                    // 虚拟地址的基地址
+    u64 pa0;                    // 物理页地址
+    u64 va_addr = (u64)va;      // 虚拟地址
+
+    while(len > 0){
+        va0 = PAGE_BASE((u64)va_addr);                       // 虚拟地址的基地址
+
+        PTEntriesPtr pte = get_pte(pd, va0, true);     // 获取页表项
+        if(pte == NULL || ((u64)pte & PTE_VALID) == 0 || ((u64)pte & PTE_USER) == 0 || ((u64)pte & PTE_RW) == 0) {
+            return -1;
+        }
+        pa0 = PTE_ADDRESS(*pte);                        // 物理页地址
+
+        n = PAGE_SIZE - VA_OFFSET(va_addr);                  // 拷贝的字节数
+        if(n > len) {
+            n = len;
+        }
+        memmove((void *)(pa0 + VA_OFFSET(va_addr)), p, n);
+
+        len -= n;
+        p += n;
+        va_addr = va0 + PAGE_SIZE;
+    }
+
+    return 0;
+}
+
+
+// 将用户空间数据拷贝到内核空间
+// 成功返回0，失败返回-1
+int copyin(struct pgdir *pd, void *p, void *va, usize len)
+{
+    u64 n = 0;                  // 一次拷贝的字节数
+    u64 va0;                    // 虚拟地址的基地址
+    u64 pa0;                    // 物理页地址
+    u64 va_addr = (u64)va;      // 虚拟地址
+
+    while(len > 0){
+        va0 = PAGE_BASE((u64)va_addr);                       // 虚拟地址的基地址
+        PTEntriesPtr pte = get_pte(pd, va0, false);     // 获取页表项
+        if(pte == NULL) {
+            return -1;
+        }
+        pa0 = PTE_ADDRESS(*pte);                        // 物理页地址
+
+        n = PAGE_SIZE - VA_OFFSET(va_addr);                  // 拷贝的字节数
+        if(n > len) {
+            n = len;
+        }
+        memmove(p, (void *)(pa0 + VA_OFFSET(va_addr)), n);
+
+        len -= n;
+        p += n;
+        va_addr = va0 + PAGE_SIZE;
+    }
+
+    return 0;
 }

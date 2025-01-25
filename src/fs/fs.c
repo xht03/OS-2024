@@ -13,5 +13,6 @@ void init_filesystem() {
     const SuperBlock* sblock = get_super_block();
     init_bcache(sblock, &block_device);
     init_inodes(sblock, &bcache);
+    
     init_ftable();
 }

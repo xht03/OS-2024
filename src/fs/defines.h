@@ -69,6 +69,7 @@ typedef struct {
 // -----------------------------------------------------
 
 #define FILE_NAME_MAX_LENGTH 14     // 文件名最大长度 (包括结尾的'\0')
+#define PATH_NAME_MAX_LENGTH 128    // 路径名最大长度 (包括结尾的'\0')
 
 // 目录项
 // inode_no == 0 表示该目录项是空闲的

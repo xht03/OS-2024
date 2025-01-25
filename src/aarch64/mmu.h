@@ -22,16 +22,16 @@ typedef unsigned long long u64;
 #define PTE_NORMAL ((MT_NORMAL << 2) | AF_USED | SH_OUTER)
 #define PTE_DEVICE ((MT_DEVICE_nGnRnE << 2) | AF_USED)
 
-#define PTE_VALID 0x1
+#define PTE_VALID 0x1           // 页表项是否有效
 
-#define PTE_TABLE 0x3
-#define PTE_BLOCK 0x1
-#define PTE_PAGE 0x3
+#define PTE_TABLE 0x3           // 页表项所描述的页是否为页表
+#define PTE_BLOCK 0x1           // 页表项所描述的页是否为块
+#define PTE_PAGE 0x3            // 页表项所描述的页是否为页
 
-#define PTE_KERNEL (0 << 6)
-#define PTE_USER (1 << 6)
-#define PTE_RO (1 << 7)
-#define PTE_RW (0 << 7)
+#define PTE_KERNEL (0 << 6)     // 该页表项属于内核模式
+#define PTE_USER (1 << 6)       // 该页表项属于用户模式
+#define PTE_RO (1 << 7)         // 只读
+#define PTE_RW (0 << 7)         // 可读可写
 
 #define PTE_KERNEL_DATA (PTE_KERNEL | PTE_NORMAL | PTE_BLOCK)
 #define PTE_KERNEL_DEVICE (PTE_KERNEL | PTE_DEVICE | PTE_BLOCK)
@@ -63,7 +63,7 @@ typedef PTEntry *PTEntriesPtr;
 #define PTE_ADDRESS(pte) ((pte) & ~0xFFFF000000000FFF)
 #define PTE_FLAGS(pte) ((pte) & 0xFFFF000000000FFF)
 #define P2N(addr) (addr >> 12)
-#define PAGE_BASE(addr) ((u64)addr & ~(PAGE_SIZE - 1))
+#define PAGE_BASE(addr) ((u64)(addr) & ~(PAGE_SIZE - 1))
 
 #define VA_PART0(va) (((u64)(va) & 0xFF8000000000) >> 39)
 #define VA_PART1(va) (((u64)(va) & 0x7FC0000000) >> 30)

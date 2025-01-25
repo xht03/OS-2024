@@ -44,7 +44,7 @@ void trap_global_handler(UserContext *context)
     }
     
     // Lab4: stop killed process while returning to user space
-    if (thisproc()->killed && (context->spsr & SPSR_EL1_DAIF_MASK) == 0) {
+    if (thisproc()->killed && (context->spsr_el1 & SPSR_EL1_DAIF_MASK) == 0) {
         exit(-1);
     }
 }

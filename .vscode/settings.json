@@ -29,6 +29,18 @@
         "inode.h": "c",
         "random": "c",
         "algorithm": "cpp",
-        "format": "cpp"
+        "format": "cpp",
+        "cstdlib": "c",
+        "spinlock.h": "c",
+        "file.h": "c",
+        "pipe.h": "c",
+        "mem.h": "c",
+        "typeinfo": "cpp",
+        "sched.h": "c",
+        "console.h": "c",
+        "elf.h": "c",
+        "stdint.h": "c",
+        "string_view": "c",
+        "mmu.h": "c"
     }
 }

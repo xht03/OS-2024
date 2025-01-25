@@ -4,10 +4,17 @@
 #include <kernel/sched.h>
 #include <test/test.h>
 #include <common/buf.h>
+#include <string.h>
 #include <driver/virtio.h>
+#include <kernel/paging.h>
+#include <kernel/mem.h>
 
 
 volatile bool panic_flag;
+
+extern char icode[], eicode[];
+
+void trap_return();
 
 NO_RETURN void idle_entry()
 {
@@ -55,6 +62,28 @@ NO_RETURN void kernel_entry()
      * Map init.S to user space and trap_return to run icode.
      */
 
+    Proc *initproc = create_proc();
+
+    initproc->ucontext->x0 = 0;
+    initproc->ucontext->elr_el1 = 0x400000;
+    initproc->ucontext->sp_el0 = 0x7ffff000;    // not sure
+    initproc->ucontext->spsr_el1 = 0;
+
+    struct section *section = kalloc(sizeof(struct section));
+    section->begin = 0x400000;
+    section->end = section->begin + (u64)eicode - (u64)icode;
+    section->flags = ST_TEXT;
+
+    _insert_into_list(&initproc->pgdir.section_head, &section->stnode);
+
+    void *page = kalloc_page();
+    memcpy(page, (void *)icode, PAGE_SIZE);
+    vmmap(&initproc->pgdir, 0x400000, page, PTE_USER_DATA | PTE_RO);
+
+    start_proc(initproc, trap_return, 0);
+    printk("init proc done\n");
+    
+    PANIC();
 
     /* (Final) TODO END */
 }

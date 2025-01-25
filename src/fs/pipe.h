@@ -5,16 +5,16 @@
 #include <fs/file.h>
 #include <common/sem.h>
 
-#define PIPE_SIZE 512
+#define PIPE_SIZE 512   // 管道(缓冲区)大小
 
 typedef struct pipe {
-    SpinLock lock;
-    Semaphore wlock, rlock;
-    char data[PIPE_SIZE];
-    u32 nread; // Number of bytes read
-    u32 nwrite; // Number of bytes written
-    int readopen; // Read fd is still open
-    int writeopen; // Write fd is still open
+    SpinLock lock;              // 管道锁
+    Semaphore wlock, rlock;     // 写锁和读锁
+    char data[PIPE_SIZE];       // 管道数据
+    u32 nread;                  // 已读取字节数
+    u32 nwrite;                 // 已写入字节数
+    int readopen;               // 读文件描述符是否仍然打开
+    int writeopen;              // 写文件描述符是否仍然打开
 } Pipe;
 
 int pipe_alloc(File **f0, File **f1);

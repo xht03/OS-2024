@@ -245,3 +245,7 @@ void kfree(void* ptr) {
 void* get_zero_page() {
     return NULL;
 }
+
+u64 left_page_cnt() {
+    return PAGE_COUNT - kalloc_page_cnt.count;
+}

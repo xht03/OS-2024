@@ -2,6 +2,8 @@
 #include <fs/inode.h>
 #include <kernel/mem.h>
 #include <kernel/printk.h>
+#include <sys/stat.h>
+#include <kernel/sched.h>
 
 
 static const SuperBlock* sblock;    // 超级块
@@ -276,7 +278,7 @@ static usize inode_map(OpContext* ctx, Inode* inode, usize offset, bool* modifie
     InodeEntry* entry = &inode->entry;
     usize block_no = 0;
     usize block_index = offset / BLOCK_SIZE;
-    usize indirect_index;
+    // usize indirect_index;
 
     // 如果是直接块
     if (block_index < INODE_NUM_DIRECT) {
@@ -345,7 +347,7 @@ static usize inode_read(Inode* inode, u8* dest, usize offset, usize count) {
     usize total_read = 0;   // 总共读取的字节数
 
     while (offset < end) {
-        usize block_index = offset / BLOCK_SIZE;                                // 块索引
+        // usize block_index = offset / BLOCK_SIZE;                                // 块索引
         usize block_offset = offset % BLOCK_SIZE;                               // 块内偏移
         usize bytes_to_read = MIN(BLOCK_SIZE - block_offset, end - offset);     // 本次读取的字节数
 
@@ -385,7 +387,7 @@ static usize inode_write(OpContext* ctx, Inode* inode, u8* src, usize offset, us
     bool modified = false;
 
     while (offset < end) {
-        usize block_index = offset / BLOCK_SIZE;                                // 块索引
+        // usize block_index = offset / BLOCK_SIZE;                                // 块索引
         usize block_offset = offset % BLOCK_SIZE;                               // 块内偏移
         usize bytes_to_write = MIN(BLOCK_SIZE - block_offset, end - offset);    // 本次写入的字节数
         usize block_no = inode_map(ctx, inode, offset, &modified);              // 获取当前偏移量所在的块号 (inode_map会处理块未分配的情况)
@@ -417,7 +419,7 @@ static usize inode_write(OpContext* ctx, Inode* inode, u8* src, usize offset, us
 }
 
 
-// 在 inode 目录中查找条目 index (caller 需要持有锁)
+// 在 inode 目录中查找条目 name (caller 需要持有锁)
 static usize inode_lookup(Inode* inode, const char* name, usize* index) {
     InodeEntry* entry = &inode->entry;
     ASSERT(entry->type == INODE_DIRECTORY);     // 确保 inode 是目录
@@ -445,11 +447,13 @@ static usize inode_lookup(Inode* inode, const char* name, usize* index) {
     }
 
     return 0;
-
 }
 
 
 // 在目录 inode 中插入一个新的目录项 (caller 需要持有锁)
+// inode: 被插入的目录
+// name: 要插入的目录项名称
+// inode_no: 要插入的目录项对应的 inode 编号
 static usize inode_insert(OpContext* ctx, Inode* inode, const char* name, usize inode_no) {
     InodeEntry* entry = &inode->entry;
     ASSERT(entry->type == INODE_DIRECTORY);     // 确保 inode 是目录
@@ -507,6 +511,7 @@ static usize inode_insert(OpContext* ctx, Inode* inode, const char* name, usize 
 }
 
 // 从目录 inode 中删除目录项 (caller 需要持有锁)
+// index: 要删除的目录项的索引
 static void inode_remove(OpContext* ctx, Inode* inode, usize index) {
     InodeEntry* entry = &inode->entry;
     ASSERT(entry->type == INODE_DIRECTORY);     // 确保 inode 是目录
@@ -614,10 +619,53 @@ static Inode* namex(const char* path,
                     bool nameiparent,
                     char* name,
                     OpContext* ctx) {
-    /* (Final) TODO BEGIN */
     
-    /* (Final) TODO END */
-    return 0;
+    Inode* ip, *next;
+
+    // 初始化起始 inode
+    // 如果是绝对路径，则从根目录开始。否则，从当前工作目录开始
+    if (*path == '/') {
+        ip = inodes.get(ROOT_INODE_NO);
+    } else {
+        ip = inodes.share(thisproc()->cwd);
+    }
+
+    // 逐层遍历路径
+    while ((path = skipelem(path, name)) != 0) {
+        inodes.lock(ip);
+
+        // 如果当前 inode 不是目录，则返回 NULL
+        if(ip->entry.type != INODE_DIRECTORY) {
+            inodes.unlock(ip);
+            inodes.put(ctx, ip);
+            return 0;
+        }
+
+        // 如果是最后一个路径元素，并且需要返回父目录的 inode
+        if(nameiparent && *path == '\0') {
+            inodes.unlock(ip);
+            return ip;
+        }
+
+        // 查找下一个路径元素，失败则返回 NULL
+        if((next = inodes.get(inodes.lookup(ip, name, 0))) == 0) {
+            inodes.unlock(ip);
+            inodes.put(ctx, ip);
+            return 0;
+        }
+
+        inodes.unlock(ip);
+        inodes.put(ctx, ip);
+        ip = next;
+    }
+
+    // 当 nameiparent 为真且路径解析完毕时，释放当前 inode 并返回 NULL。
+    if(nameiparent) {
+        inodes.put(ctx, ip);
+        return 0;
+    }
+
+    return ip;
 }
 
 Inode* namei(const char* path, OpContext* ctx) {

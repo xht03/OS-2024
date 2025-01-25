@@ -31,25 +31,41 @@ struct iovec {
     usize iov_len; /* Number of bytes to transfer. */
 };
 
-/** 
- * Get the file object by fd. Return null if the fd is invalid.
- */
+
+// 获取文件对象(通过fd)
+// 如果文件描述符无效，则返回 NULL
 static struct file *fd2file(int fd)
 {
-    /* (Final) TODO BEGIN */
-    
-    /* (Final) TODO END */
+    if(fd < 0 || fd >= NFILE) {
+        return NULL;
+    }
+
+    struct file *f = thisproc()->oftable.files[fd];
+
+    if(f == NULL || f->ref < 1) {
+        return NULL;
+    }
+
+    return f;
 }
 
 /*
  * Allocate a file descriptor for the given file.
  * Takes over file reference from caller on success.
  */
+// 给文件f分配一个文件描述符fd
+// (从进程文件表中分配一个空闲的位置给 f)
 int fdalloc(struct file *f)
 {
-    /* (Final) TODO BEGIN */
-    
-    /* (Final) TODO END */
+    Proc *p = thisproc();
+
+    for (int fd = 0; fd < NOFILE; fd++) {
+        if (p->oftable.files[fd] == NULL) {
+            p->oftable.files[fd] = f;
+            return fd;
+        }
+    }
+
     return -1;
 }
 
@@ -66,14 +82,14 @@ define_syscall(mmap, void *addr, int length, int prot, int flags, int fd,
                int offset)
 {
     /* (Final) TODO BEGIN */
-    
+    return 0;
     /* (Final) TODO END */
 }
 
 define_syscall(munmap, void *addr, size_t length)
 {
     /* (Final) TODO BEGIN */
-    
+    return 0;
     /* (Final) TODO END */
 }
 
@@ -122,9 +138,12 @@ define_syscall(writev, int fd, struct iovec *iov, int iovcnt)
 
 define_syscall(close, int fd)
 {
-    /* (Final) TODO BEGIN */
-    
-    /* (Final) TODO END */
+    struct file *f = fd2file(fd);
+    if (!f) {
+        return -1;
+    }
+    thisproc()->oftable.files[fd] = NULL;
+    file_close(f);
     return 0;
 }
 
@@ -257,13 +276,90 @@ bad:
 
     @return Inode* the created inode, or NULL if failed.
  */
+
+// 在路径 path 下创建一个新的 inode (如果inode是目录，则还需要创建 "." 和 ".." 条目)
+// type: inode 类型
+// major: 设备的主设备号 (如果inode是设备类型)
+// minor: 设备的次设备号 (如果inode是设备类型)
 Inode *create(const char *path, short type, short major, short minor,
               OpContext *ctx)
 {
-    /* (Final) TODO BEGIN */
     
-    /* (Final) TODO END */
-    return 0;
+    char name[FILE_NAME_MAX_LENGTH]; 
+    Inode *dp, *ip;
+
+    // 获取父目录的 inode
+    if ((dp = nameiparent(path, name, ctx)) == NULL) {
+        return NULL;
+    }
+
+    inodes.lock(dp);        // 获取父目录的锁
+
+    
+    usize inode_no;
+
+    // 检查目录项是否已存在
+    if ((inode_no = inodes.lookup(dp, name, NULL)) != 0) {
+        inodes.unlock(dp);
+        inodes.put(ctx, dp);
+
+        ip = inodes.get(inode_no);
+        inodes.lock(ip);                // 获取目录项的锁
+
+        // 如果目录项已存在，且类型匹配，则直接返回
+        if(ip->entry.type == type) {
+            return ip;
+        }
+        // 如果目录项已存在，但类型不匹配，则返回 NULL
+        else {
+            inodes.unlock(ip);
+            inodes.put(ctx, ip);
+            return NULL;
+        }
+    }
+
+    // 分配新的 inode
+    inode_no = inodes.alloc(ctx, type);
+    ip = inodes.get(inode_no);
+
+    inodes.lock(ip);                    // 获取新 inode 的锁
+
+    // 初始化新 inode
+    ip->entry.major = major;
+    ip->entry.minor = minor;
+    ip->entry.num_links = 1;
+    inodes.sync(ctx, ip, true);
+
+    // 插入到父目录项
+    if (inodes.insert(ctx, dp, name, ip->inode_no) == (usize)(-1)) {
+        goto fail;
+    }
+
+    // 如果是目录类型，则创建 "." 和 ".." 条目
+    if (type == INODE_DIRECTORY) {
+        // 创建 "." 和 ".." 条目
+        if (inodes.insert(ctx, ip, ".", ip->inode_no) == (usize)(-1) || 
+            inodes.insert(ctx, ip, "..", dp->inode_no) == (usize)(-1)) {
+            goto fail;
+        }
+
+        dp->entry.num_links++;
+        inodes.sync(ctx, dp, true);
+    }
+
+    inodes.unlock(dp);
+    inodes.put(ctx, dp);
+
+    return ip;
+
+fail:
+    ip->entry.num_links = 0;        // 设置为无人引用，则 put 时会释放 ip
+    inodes.sync(ctx, ip, true);
+    inodes.unlock(ip);
+    inodes.put(ctx, ip);
+    inodes.unlock(dp);
+    inodes.put(ctx, dp);
+    return NULL;
 }
 
 define_syscall(openat, int dirfd, const char *path, int omode)
@@ -366,22 +462,57 @@ define_syscall(mknodat, int dirfd, const char *path, mode_t mode, dev_t dev)
     return 0;
 }
 
+
 define_syscall(chdir, const char *path)
 {
-    /**
-     * (Final) TODO BEGIN 
-     * 
+    /*
      * Change the cwd (current working dictionary) of current process to 'path'.
      * You may need to do some validations.
      */
-    
-    /* (Final) TODO END */
+
+    Inode *ip;
+    Proc *p = thisproc();
+    OpContext ctx;
+
+    // 验证路径长度
+    if (!user_strlen(path, PATH_NAME_MAX_LENGTH)) {
+        return -1;
+    }
+
+    bcache.begin_op(&ctx);      //* 开始文件系统事务
+
+    // 获取路径对应的 inode
+    if ((ip = namei(path, &ctx)) == NULL) {
+        bcache.end_op(&ctx);
+        return -1;
+    }
+
+    inodes.lock(ip);
+
+    // 检查 inode 类型是否为目录
+    if (ip->entry.type != INODE_DIRECTORY) {
+        inodes.unlock(ip);
+        inodes.put(&ctx, ip);
+        bcache.end_op(&ctx);
+        return -1;
+    }
+
+    inodes.unlock(ip);
+
+    inodes.put(&ctx, p->cwd);
+
+    bcache.end_op(&ctx);        //* 结束文件系统事务
+
+    // 更新进程的当前工作目录
+    p->cwd = ip;
+
+    return 0;    
 }
 
 define_syscall(pipe2, int pipefd[2], int flags)
 {
 
     /* (Final) TODO BEGIN */
-    
+    return 0;
     /* (Final) TODO END */
 }

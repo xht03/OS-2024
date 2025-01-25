@@ -8,47 +8,40 @@
 #include <sys/stat.h>
 #include <common/list.h>
 
-// maximum number of open files in the whole system.
-#define NFILE 65536  
+#define NFILE 65536     // maximum number of open files in the whole system (系统中最多可以同时打开 2^16 个文件)
+#define NOFILE 64       // maximum number of open files per process (每个进程最多可以打开 64 个文件)
+
 
 typedef struct file {
-    // type of the file.
-    // Note that a device file will be FD_INODE too.
-    enum { FD_NONE, FD_PIPE, FD_INODE } type;
-    // reference count.
-    int ref;
-    // whether the file is readable or writable.
-    bool readable, writable;
-    // corresponding underlying object for the file.
-    union {
+    enum { FD_NONE, FD_PIPE, FD_INODE } type;   // 文件类型 (设备被视为 FD_INODE 类型的文件)
+    int ref;                                    // 引用计数
+    bool readable, writable;                    // 是否可读/写
+    union {                                     // 对应文件的指针
         struct pipe* pipe;
         Inode* ip;
     };
-    // offset of the file in bytes.
-    // For a pipe, it is the number of bytes that have been written/read.
-    usize off;
+    usize off;                                  // 文件偏移量 (对于管道，这是已写入或读取的字节数)
 } File;
 
+
+// 全局文件表
 struct ftable {
-    // TODO: table of file objects in the system
-
-    // Note: you may need a lock to prevent concurrent access to the table!
+    SpinLock lock;          // 文件表锁 (避免多个进程同时访问文件表)
+    File files[NFILE];      // 全局文件数组
 };
 
+// 进程打开的文件表
 struct oftable {
-    // TODO: table of opened file descriptors in a process
+    File *files[NOFILE];     // 文件指针数组 (指向打开的文件的结构体)
 };
 
-// initialize the global file table.
-void init_ftable();
-// initialize the opened file table for a process.
-void init_oftable(struct oftable*);
 
-/**
-    @brief find an unused (i.e. ref == 0) file in the global file table and set ref to 1.
-    
-    @return struct file* the found file object.
- */
+
+void init_ftable();                     // 初始化全局文件表
+void init_oftable(struct oftable*);     // 初始化进程的打开文件表
+
+// 分配一个文件(结构体)
+// 在全局文件表中查找一个未使用的文件对象，并将其引用计数设置为1
 struct file* file_alloc();
 
 /**
@@ -58,6 +51,7 @@ struct file* file_alloc();
 
     @see `inode_share` does the similar thing for inode.
  */
+// 复制文件
 struct file* file_dup(struct file* f);
 
 /**
@@ -70,6 +64,7 @@ struct file* file_dup(struct file* f);
 
     @see `inode_put` does the similar thing for inode.
  */
+// 关闭文件
 void file_close(struct file* f);
 
 /**
@@ -82,6 +77,7 @@ void file_close(struct file* f);
 
     @see `stati` will fill `st` for an inode.
  */
+// 获取文件元数据
 int file_stat(struct file* f, struct stat* st);
 
 /**
@@ -92,6 +88,7 @@ int file_stat(struct file* f, struct stat* st);
     @param n the number of bytes to read.
     @return isize the number of bytes actually read. -1 on error.
  */
+// 读取文件
 isize file_read(struct file* f, char* addr, isize n);
 
 /**
@@ -101,4 +98,5 @@ isize file_read(struct file* f, char* addr, isize n);
     @param n the number of bytes to write.
     @return isize the number of bytes actually written. -1 on error.
 */
+// 写入文件
 isize file_write(struct file* f, char* addr, isize n);
