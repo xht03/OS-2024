@@ -41,6 +41,7 @@
         "elf.h": "c",
         "stdint.h": "c",
         "string_view": "c",
-        "mmu.h": "c"
+        "mmu.h": "c",
+        "unistd.h": "c"
     }
 }
