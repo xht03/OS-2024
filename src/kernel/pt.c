@@ -141,40 +141,32 @@ void vmmap(struct pgdir *pd, u64 va, void *ka, u64 flags)
 }
 
 
-// 将内核数据拷贝到用户空间
-// 成功返回0，失败返回-1
-int copyout(struct pgdir *pd, void *va, void *p, usize len)
+// 从 内核空间 复制数据到 用户空间
+// 从 src 复制 len 字节到给定页表中的虚拟地址 dstva
+int copyout(struct pgdir* pd, void* dstva, void* src, u64 len)
 {
+    while (len > 0) {
+        // 获取dstva所在页的首地址
+        u64 va0 = round_down((u64)dstva, PAGE_SIZE);
 
-    /*
-    * Copy len bytes from p to user address va in page table pgdir.
-    * Allocate physical pages if required.
-    * Useful when pgdir is not the current page table.
-    */
-    
-    u64 n = 0;                  // 一次拷贝的字节数
-    u64 va0;                    // 虚拟地址的基地址
-    u64 pa0;                    // 物理页地址
-    u64 va_addr = (u64)va;      // 虚拟地址
+        // 获取dstva对应的页表项
+        PTEntriesPtr pte = get_pte(pd, va0, false);
 
-    while(len > 0){
-        va0 = PAGE_BASE((u64)va_addr);                       // 虚拟地址的基地址
+        // 获取va0对应的内核地址
+        u64 ka = P2K(PTE_ADDRESS(*pte));
 
-        PTEntriesPtr pte = get_pte(pd, va0, true);     // 获取页表项
-        if(pte == NULL || ((u64)pte & PTE_VALID) == 0 || ((u64)pte & PTE_USER) == 0 || ((u64)pte & PTE_RW) == 0) {
-            return -1;
-        }
-        pa0 = PTE_ADDRESS(*pte);                        // 物理页地址
-
-        n = PAGE_SIZE - VA_OFFSET(va_addr);                  // 拷贝的字节数
-        if(n > len) {
+        // 计算dstva到页末的字节数
+        u64 bias = (u64)dstva - va0;
+        u64 n = PAGE_SIZE - bias;
+        if (n > len)
             n = len;
-        }
-        memmove((void *)(pa0 + VA_OFFSET(va_addr)), p, n);
+
+        // 拷贝数据到对应内核地址
+        memcpy((void*)(ka + bias), src, n);
 
         len -= n;
-        p += n;
-        va_addr = va0 + PAGE_SIZE;
+        src += n;
+        dstva = (void*)(va0 + PAGE_SIZE);
     }
 
     return 0;
@@ -211,3 +203,49 @@ int copyin(struct pgdir *pd, void *p, void *va, usize len)
 
     return 0;
 }
+
+
+// 扩展进程的用户内存 oldsz => newsz
+// (oldsz和newsz不需要页对齐)
+u64 uvmalloc(struct pgdir* pd, u64 oldsz, u64 newsz)
+{
+    // 确保newsz大于oldsz
+    if (newsz < oldsz)
+        return oldsz;
+
+    // 向上对齐PGSIZE, 得到需新分配的起始页
+    oldsz = round_up(oldsz, PAGE_SIZE);
+
+    for (u64 va = oldsz; va < newsz; va += PAGE_SIZE) {
+        // 分配一页新内存并清空
+        char* mem = kalloc_page();
+        memset(mem, 0, PAGE_SIZE);
+
+        // 将新内存映射到页表
+        auto pte = get_pte(pd, va, true);
+        *pte = K2P(mem) | PTE_USER_DATA;
+    }
+    return newsz;
+}
+
+
+// 将父进程的地址空间复制到子进程
+// (既复制页表页, 又复制物理内存页)
+int uvmcopy(struct pgdir* old, struct pgdir* new, u64 sz)
+{
+    for (u64 i = 0; i < sz; i += PAGE_SIZE) {
+        // 获取父进程的页表项对应的内核地址
+        PTEntriesPtr pte = get_pte(old, i, false);
+        u64 ka = P2K(PTE_ADDRESS(*pte));
+
+        // 分配一页新内存并拷贝
+        char* mem = kalloc_page();
+        memcpy(mem, (void*)ka, PAGE_SIZE);
+
+        // 将新内存映射到页表
+        *get_pte(new, i, true) = K2P(mem) | PTE_USER_DATA;
+    }
+
+    return 0;
+}
+

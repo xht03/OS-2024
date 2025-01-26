@@ -60,12 +60,16 @@ static void free_desc(struct virtq *virtq, u16 n)
 int virtio_blk_rw(Buf *b)
 {
     enum diskop op = DREAD;
+
+    // 如果缓冲区被修改, 则需要写回
     if (b->flags & B_DIRTY)
         op = DWRITE;
     
+    // 初始化信号量
     init_sem(&b->sem, 0);
 
-    u64 sector = b->block_no;
+    u64 sector = b->block_no + 0x20800;     // TODO: 计算块号blockno对应的块区号 (文件系统偏移)
+
     struct virtio_blk_req_hdr hdr;
 
     if (op == DREAD)

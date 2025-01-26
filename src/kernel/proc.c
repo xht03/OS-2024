@@ -305,76 +305,72 @@ void trap_return();
 
 
 // 将父进程的地址空间复制到子进程
-int copyuvm(Proc *parent, Proc *child)
-{
-	struct pgdir *pgdir_parent = &parent->pgdir;
-    struct pgdir *pgdir_child = &child->pgdir;
+// int copyuvm(Proc *parent, Proc *child)
+// {
+// 	struct pgdir *pgdir_parent = &parent->pgdir;
+//     struct pgdir *pgdir_child = &child->pgdir;
 
-	init_pgdir(pgdir_child);
+// 	init_pgdir(pgdir_child);
 
-	// 一级页表
-	 for (int i = 0; i < N_PTE_PER_TABLE; i++) {
+// 	// 一级页表
+// 	 for (int i = 0; i < N_PTE_PER_TABLE; i++) {
 		
-		// 如果父进程的页表项有效
-		if (pgdir_parent->pt[i] & PTE_VALID) {
-            PTEntriesPtr pt1_parent = (PTEntriesPtr)P2K(PTE_ADDRESS(pgdir_parent->pt[i]));		// 父进程的一级页表的内核地址
-            PTEntriesPtr pt1_child = (PTEntriesPtr)kalloc_page();								// 子进程的一级页表的内核地址(新分配的)
-            if (pt1_child == NULL) {
-                free_pgdir(pgdir_child);
-                return -1;
-            }
-            pgdir_child->pt[i] = K2P(pt1_child) | PTE_VALID | PTE_TABLE | PTE_USER | PTE_RW;
+// 		// 如果父进程的页表项有效
+// 		if (pgdir_parent->pt[i] & PTE_VALID) {
+//             PTEntriesPtr pt1_parent = (PTEntriesPtr)P2K(PTE_ADDRESS(pgdir_parent->pt[i]));		// 父进程的一级页表的内核地址
+//             PTEntriesPtr pt1_child = (PTEntriesPtr)kalloc_page();								// 子进程的一级页表的内核地址(新分配的)
+//             if (pt1_child == NULL) {
+//                 free_pgdir(pgdir_child);
+//                 return -1;
+//             }
+//             pgdir_child->pt[i] = K2P(pt1_child) | PTE_VALID | PTE_TABLE | PTE_USER | PTE_RW;
 
-			// 二级页表
-            for (int j = 0; j < N_PTE_PER_TABLE; j++) {
-                if (pt1_parent[j] & PTE_VALID) {
-                    PTEntriesPtr pt2_parent = (PTEntriesPtr)P2K(PTE_ADDRESS(pt1_parent[j]));
-                    PTEntriesPtr pt2_child = (PTEntriesPtr)kalloc_page();
-                    if (pt2_child == NULL) {
-                        free_pgdir(pgdir_child);
-                        return -1;
-                    }
-                    pt1_child[j] = K2P(pt2_child) | PTE_VALID | PTE_TABLE | PTE_USER | PTE_RW;
+// 			// 二级页表
+//             for (int j = 0; j < N_PTE_PER_TABLE; j++) {
+//                 if (pt1_parent[j] & PTE_VALID) {
+//                     PTEntriesPtr pt2_parent = (PTEntriesPtr)P2K(PTE_ADDRESS(pt1_parent[j]));
+//                     PTEntriesPtr pt2_child = (PTEntriesPtr)kalloc_page();
+//                     if (pt2_child == NULL) {
+//                         free_pgdir(pgdir_child);
+//                         return -1;
+//                     }
+//                     pt1_child[j] = K2P(pt2_child) | PTE_VALID | PTE_TABLE | PTE_USER | PTE_RW;
 
-					// 三级页表
-                    for (int k = 0; k < N_PTE_PER_TABLE; k++) {
-                        if (pt2_parent[k] & PTE_VALID) {
-                            PTEntriesPtr pt3_parent = (PTEntriesPtr)P2K(PTE_ADDRESS(pt2_parent[k]));
-                            PTEntriesPtr pt3_child = (PTEntriesPtr)kalloc_page();
-                            if (pt3_child == NULL) {
-                                free_pgdir(pgdir_child);
-                                return -1;
-                            }
-                            pt2_child[k] = K2P(pt3_child) | PTE_VALID | PTE_TABLE | PTE_USER | PTE_RW;
+// 					// 三级页表
+//                     for (int k = 0; k < N_PTE_PER_TABLE; k++) {
+//                         if (pt2_parent[k] & PTE_VALID) {
+//                             PTEntriesPtr pt3_parent = (PTEntriesPtr)P2K(PTE_ADDRESS(pt2_parent[k]));
+//                             PTEntriesPtr pt3_child = (PTEntriesPtr)kalloc_page();
+//                             if (pt3_child == NULL) {
+//                                 free_pgdir(pgdir_child);
+//                                 return -1;
+//                             }
+//                             pt2_child[k] = K2P(pt3_child) | PTE_VALID | PTE_TABLE | PTE_USER | PTE_RW;
 
-							// 四级页表
-                            for (int l = 0; l < N_PTE_PER_TABLE; l++) {
-                                if (pt3_parent[l] & PTE_VALID) {
-                                    PTEntriesPtr pt4_parent = (PTEntriesPtr)P2K(PTE_ADDRESS(pt3_parent[l]));
-                                    PTEntriesPtr pt4_child = (PTEntriesPtr)kalloc_page();
-                                    if (pt4_child == NULL) {
-                                        free_pgdir(pgdir_child);
-                                        return -1;
-                                    }
-                                    pt3_child[l] = K2P(pt4_child) | PTE_VALID | PTE_TABLE | PTE_USER | PTE_RW;
+// 							// 四级页表
+//                             for (int l = 0; l < N_PTE_PER_TABLE; l++) {
+//                                 if (pt3_parent[l] & PTE_VALID) {
+//                                     PTEntriesPtr pt4_parent = (PTEntriesPtr)P2K(PTE_ADDRESS(pt3_parent[l]));
+//                                     PTEntriesPtr pt4_child = (PTEntriesPtr)kalloc_page();
+//                                     if (pt4_child == NULL) {
+//                                         free_pgdir(pgdir_child);
+//                                         return -1;
+//                                     }
+//                                     pt3_child[l] = K2P(pt4_child) | PTE_VALID | PTE_TABLE | PTE_USER | PTE_RW;
 
-                                    // 复制页表项内容
-                                    memcpy(pt4_child, pt4_parent, PAGE_SIZE);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-	 }
+//                                     // 复制页表项内容
+//                                     memcpy(pt4_child, pt4_parent, PAGE_SIZE);
+//                                 }
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+// 	 }
+// 	return 0;
+// }
 
-	return 0;
-}
-
-
-
-// lock may go wrong
 
 int fork()
 {
@@ -390,45 +386,38 @@ int fork()
 	Proc *parent = thisproc();
 	Proc *child = create_proc();
 
-	int pid;
+	acquire_spinlock(&child->lock);		// 获取子进程的锁
 
-	if(child == NULL) {
-		return -1;
-	}
-
-	// 复制父进程的内存空间
-	if (copyuvm(parent, child) == -1) {
-		kfree(child);
-		return -1;
-	}
+	// 复制父进程的地址空间
+	uvmcopy(&parent->pgdir, &child->pgdir, parent->sz);	
+	child->sz = parent->sz;
 
 	// 复制父进程的 usercontext
-	acquire_spinlock(&child->lock);
+	*child->ucontext = *parent->ucontext;
 
-	memcpy(child->ucontext, parent->ucontext, sizeof(UserContext));
-	child->ucontext->x0 = 0;	// 设置返回值为0
-
-	release_spinlock(&child->lock);
-
+	// 子进程的fork设置返回值为0
+	child->ucontext->x0 = 0;
 
 	// 增加父进程打开的文件的引用计数
-	acquire_spinlock(&child->lock);
 	for(int i = 0; i < NOFILE; i++) {
 		if(parent->oftable.files[i] != NULL) {
 			child->oftable.files[i] = file_dup(parent->oftable.files[i]);
 		}
 	}
 	child->cwd = inodes.share(parent->cwd);
-	release_spinlock(&child->lock);
 
-	// 获取新进程的pid
-	pid = child->pid;
+	// 设置父进程
+	child->parent = parent;
+	acquire_spinlock(&parent->lock);
+	_insert_into_list(&parent->children, &child->ptnode);
+	release_spinlock(&parent->lock);
 
-	// 设置新进程的父进程为当前进程
-	set_parent_to_this(child);
+	int pid = child->pid;
 
-	// 激活新进程
-	activate_proc(child);
+	release_spinlock(&child->lock);			// 释放子进程的锁
+
+	// 激活子进程
+	start_proc(child, trap_return, 0);
 
 	return pid;
 }

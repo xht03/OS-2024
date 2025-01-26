@@ -55,4 +55,4 @@ void init_block_device();
  *
  * @return const SuperBlock* the global super block.
  */
-const SuperBlock *get_super_block();
+SuperBlock *get_super_block();

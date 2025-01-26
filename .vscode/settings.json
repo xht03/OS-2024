@@ -42,6 +42,8 @@
         "stdint.h": "c",
         "string_view": "c",
         "mmu.h": "c",
-        "unistd.h": "c"
+        "unistd.h": "c",
+        "buf.h": "c",
+        "block_device.h": "c"
     }
 }

@@ -6,6 +6,7 @@
 #include <common/buf.h>
 #include <string.h>
 #include <driver/virtio.h>
+#include <driver/memlayout.h>
 #include <kernel/paging.h>
 #include <kernel/mem.h>
 
@@ -46,22 +47,11 @@ NO_RETURN void kernel_entry()
     // user_proc_test();
     // io_test();
 
-    /* LAB 4 TODO 3 BEGIN */
-
-    Buf MBR_buf;
-    MBR_buf.flags = 0;
-    MBR_buf.block_no = 0;
-    virtio_blk_rw(&MBR_buf);
-
-    u8 * MBR = MBR_buf.data;
-    LBA = *(u32 *)(MBR + 0x1ce + 0x8);
-
-
-    init_filesystem();
-
     printk("Hello world! (Core %lld)\n", cpuid());
+
+    // 初始化文件系统
+    init_filesystem();
     
-    /* LAB 4 TODO 3 END */
 
     /**
      * (Final) TODO BEGIN 
@@ -69,35 +59,34 @@ NO_RETURN void kernel_entry()
      * Map init.S to user space and trap_return to run icode.
      */
 
-    Proc *initproc = create_proc();
+    Proc *p = create_proc();
 
-    initproc->ucontext->x0 = 0;
-    initproc->ucontext->elr_el1 = 0x400000;
-    initproc->ucontext->sp_el0 = 0x80000000;    // not sure
-    initproc->ucontext->spsr_el1 = 0;
-
-    struct section *section = kalloc(sizeof(struct section));
-    section->begin = 0x400000;
-    section->end = section->begin + (u64)eicode - (u64)icode;
-    section->flags = ST_TEXT;
-
-    _insert_into_list(&initproc->pgdir.section_head, &section->stnode);
-
-    void *page = kalloc_page();
-    memcpy(page, (void *)icode, PAGE_SIZE);
-    vmmap(&initproc->pgdir, 0x400000, page, PTE_USER_DATA | PTE_RW);
-
-    start_proc(initproc, trap_return, 0);
-    printk("init proc done\n");
-    
-    while (1) {
-        int code;
-        auto pid = wait(&code);
-        (void)pid;
+    // 将init.S映射到用户空间EXTMEM
+    extern char icode[], eicode[];
+    for (u64 q = (u64)icode; q < (u64)eicode; q += PAGE_SIZE) {
+        *get_pte(&p->pgdir, EXTMEM + q - (u64)icode, true) = K2P(q) | PTE_USER_DATA;
     }
+
+    // 确保页表已分配
+    ASSERT(p->pgdir.pt);
+
+    // 设置用户态上下文
+    p->ucontext->sp_el0 = EXTMEM + PAGE_SIZE; // 用户栈
+    p->ucontext->spsr_el1 = 0;                // 用户模式
+    p->ucontext->elr_el1 = EXTMEM;            // init.S
+
+    // 设置当前工作目录
+    p->cwd = inodes.get(ROOT_INODE_NO);
     
+    // 启动 root_proc
+    start_proc(p, trap_return, 0);
+
+    // 等待所有进程退出
+    int exitcode;
+    while (wait(&exitcode) != -1)
+        printk("kernel_entry: exit with pid %d\n", exitcode);
+
     PANIC();
-    
 
     /* (Final) TODO END */
 }

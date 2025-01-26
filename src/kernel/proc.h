@@ -97,6 +97,7 @@ typedef struct Proc {
     struct Proc *parent;        // 父进程指针
     struct schinfo schinfo;     // 调度信息
     struct pgdir pgdir;         // 进程的页表
+    u64 sz;                     // 进程的内存大小
 
     KernelContext *kcontext;    // 内核态上下文 (也是内核栈开始处，从高到低)
     UserContext *ucontext;      // 用户态上下文 (用户态、内核态之间切换)
