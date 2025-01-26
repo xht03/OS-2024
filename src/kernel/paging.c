@@ -12,7 +12,6 @@
 #include <kernel/pt.h>
 #include <kernel/sched.h>
 
-
 void init_sections(ListNode *section_head) {
     init_list_node(section_head);
 }
@@ -26,7 +25,7 @@ void free_sections(struct pgdir *pd) {
         struct section *section = container_of(node, struct section, stnode);
         ListNode *next = node->next;
 
-        detach_from_list(&pd->lock, node);
+        _detach_from_list(node);
 
         if(section->fp != NULL) {
             inodes.lock(section->fp->ip);

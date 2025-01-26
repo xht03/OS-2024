@@ -73,7 +73,7 @@ NO_RETURN void kernel_entry()
 
     initproc->ucontext->x0 = 0;
     initproc->ucontext->elr_el1 = 0x400000;
-    initproc->ucontext->sp_el0 = 0x7ffff000;    // not sure
+    initproc->ucontext->sp_el0 = 0x80000000;    // not sure
     initproc->ucontext->spsr_el1 = 0;
 
     struct section *section = kalloc(sizeof(struct section));
@@ -85,7 +85,7 @@ NO_RETURN void kernel_entry()
 
     void *page = kalloc_page();
     memcpy(page, (void *)icode, PAGE_SIZE);
-    vmmap(&initproc->pgdir, 0x400000, page, PTE_USER_DATA | PTE_RO);
+    vmmap(&initproc->pgdir, 0x400000, page, PTE_USER_DATA | PTE_RW);
 
     start_proc(initproc, trap_return, 0);
     printk("init proc done\n");
@@ -97,6 +97,7 @@ NO_RETURN void kernel_entry()
     }
     
     PANIC();
+    
 
     /* (Final) TODO END */
 }

@@ -31,6 +31,8 @@ int execve(const char *path, char *const argv[], char *const envp[])
     struct pgdir *pgdir = (struct pgdir *)kalloc(sizeof(struct pgdir));
     Proc *p = thisproc();
 
+    init_pgdir(pgdir);
+
     /*
     * Step1: Load data from the file stored in `path`.
     * The first `sizeof(struct Elf64_Ehdr)` bytes is the ELF header part.
@@ -56,7 +58,8 @@ int execve(const char *path, char *const argv[], char *const envp[])
     }
 
     // 检查 ELF 魔数
-    if(strncmp((const char *)elf.e_ident, ELFMAG, SELFMAG) != 0 || elf.e_ident[EI_CLASS] != ELFCLASS64) {
+    if(elf.e_ident[0] != ELFMAG0 || elf.e_ident[1] != ELFMAG1 || elf.e_ident[2] != ELFMAG2
+        || elf.e_ident[3] != ELFMAG3) {
         printk("execve: not an ELF file\n");
         goto bad;
     }
@@ -81,7 +84,7 @@ int execve(const char *path, char *const argv[], char *const envp[])
     u64 section_top = 0;                // 所有段的最高地址
 
     for (u64 i = 0, off = phoff; i < phnum; i++, off += sizeof(Elf64_Phdr)) {
-        // 读取 Program Header
+        // 读取每个段的 Program Header
         if(inodes.read(ip, (u8 *)&phdr, off, sizeof(Elf64_Phdr)) != sizeof(Elf64_Phdr)) {
             printk("execve: cannot read program header\n");
             goto bad;
@@ -89,12 +92,15 @@ int execve(const char *path, char *const argv[], char *const envp[])
 
         section_top = MAX(section_top, phdr.p_vaddr + phdr.p_memsz);
 
+        // 跳过不可加载的段
         if(phdr.p_type != PT_LOAD) {
             continue;
         }
 
-        struct section *section = (struct section*)kalloc(sizeof(struct section));
+        struct section *section = (struct section*)kalloc(sizeof(struct section));  
         memset(section, 0, sizeof(struct section));
+        init_sections(&section->stnode);
+        
         section->begin = phdr.p_vaddr;
 
         if(phdr.p_flags == (PF_R|PF_X)) {
@@ -112,7 +118,7 @@ int execve(const char *path, char *const argv[], char *const envp[])
             section->offset = phdr.p_offset;
             section->length = phdr.p_filesz;
         }
-        else if (phdr.p_flags == (PF_R|PF_X)) {
+        else if (phdr.p_flags == (PF_R|PF_W)) {
             // data or bss section
             section->flags = ST_DATA;
             section->end = section->begin + phdr.p_memsz;
@@ -133,8 +139,7 @@ int execve(const char *path, char *const argv[], char *const envp[])
                 if(inodes.read(ip, (u8 *)(page + VA_OFFSET(va)), offset, size) != size) {
                     printk("execve: cannot read data section\n");
                     goto bad;
-                }
-                inodes.unlock(section->fp->ip);
+                } 
 
                 filesz -= size;
                 va += size;
@@ -257,7 +262,6 @@ int execve(const char *path, char *const argv[], char *const envp[])
 
     // 更新页表
     free_pgdir(&p->pgdir);
-    free_sections(&p->pgdir);
 
     memcpy(&p->pgdir, pgdir, sizeof(struct pgdir));
 

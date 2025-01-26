@@ -3,6 +3,7 @@
 #include <kernel/mem.h>
 #include <kernel/pt.h>
 #include <kernel/printk.h>
+#include <kernel/paging.h>
 
 PTEntriesPtr get_pte(struct pgdir *pgdir, u64 va, bool alloc)
 {
@@ -106,6 +107,9 @@ void free_pgdir(struct pgdir *pgdir)
     // 释放顶级页表
     kfree_page(pt0);
     pgdir->pt = NULL;
+
+    // 释放内存段
+    free_sections(pgdir);
 }
 
 void attach_pgdir(struct pgdir *pgdir)
