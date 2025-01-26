@@ -40,8 +40,8 @@ struct file* file_alloc() {
             return &ftable.files[i];
         }
     }
-    release_spinlock(&ftable.lock);
-    return 0;
+    
+    PANIC();
 }
 
 // 文件的引用数+1
@@ -67,7 +67,10 @@ void file_close(struct file* f) {
         printk("file_close wrong: cannot close a file twice\n");
         PANIC();
     }
-    if(--f->ref > 0) {
+
+    f->ref--;
+
+    if(f->ref > 0) {
         release_spinlock(&ftable.lock);
         return;
     }
@@ -85,7 +88,8 @@ void file_close(struct file* f) {
     // 根据文件类型，执行相应的关闭操作
     if(ff.type == FD_PIPE) {
         pipe_close(ff.pipe, ff.writable);
-    } else if (ff.type == FD_INODE) {
+    } 
+    else if (ff.type == FD_INODE) {
         OpContext ctx;
         bcache.begin_op(&ctx);
         inodes.put(&ctx, ff.ip);
@@ -117,7 +121,8 @@ isize file_read(struct file* f, char* addr, isize n) {
     } 
     else if(f->type == FD_INODE) {
         inodes.lock(f->ip);
-        if((r = inodes.read(f->ip, (u8*)addr, f->off, n)) > 0) {
+        r = inodes.read(f->ip, (u8*)addr, f->off, n);
+        if(r > 0) {
             f->off += r;   
         }
         inodes.unlock(f->ip);
@@ -131,11 +136,12 @@ isize file_read(struct file* f, char* addr, isize n) {
 
 // 写入文件
 isize file_write(struct file* f, char* addr, isize n) {
-    int r = 0;
 
     if(f->writable == false) {
         return -1;
     }
+
+    isize r = 0;
 
     if(f->type == FD_PIPE) {
         r = pipe_write(f->pipe, (u64)addr, n);
@@ -144,9 +150,12 @@ isize file_write(struct file* f, char* addr, isize n) {
         OpContext ctx;
         bcache.begin_op(&ctx);
         inodes.lock(f->ip);
-        if((r = inodes.write(&ctx, f->ip, (u8*)addr, f->off, n)) > 0) {
+
+        r = inodes.write(&ctx, f->ip, (u8*)addr, f->off, n);
+        if(r > 0) {
             f->off += r;   
         }
+
         inodes.unlock(f->ip);
         bcache.end_op(&ctx);
     }
@@ -155,5 +164,5 @@ isize file_write(struct file* f, char* addr, isize n) {
         PANIC();
     }
 
-    return 0;
+    return r;
 }

@@ -287,6 +287,7 @@ Inode *create(const char *path, short type, short major, short minor,
     
     char name[FILE_NAME_MAX_LENGTH]; 
     Inode *dp, *ip;
+    usize inode_no;
 
     // 获取父目录的 inode
     if ((dp = nameiparent(path, name, ctx)) == NULL) {
@@ -295,10 +296,7 @@ Inode *create(const char *path, short type, short major, short minor,
 
     inodes.lock(dp);        // 获取父目录的锁
 
-    
-    usize inode_no;
-
-    // 检查目录项是否已存在
+    // 确保路径对应文件，当前不存在
     if ((inode_no = inodes.lookup(dp, name, NULL)) != 0) {
         inodes.unlock(dp);
         inodes.put(ctx, dp);
@@ -306,21 +304,22 @@ Inode *create(const char *path, short type, short major, short minor,
         ip = inodes.get(inode_no);
         inodes.lock(ip);                // 获取目录项的锁
 
-        // 如果目录项已存在，且类型匹配，则直接返回
-        if(ip->entry.type == type) {
+        if (type == INODE_REGULAR && (ip->entry.type == INODE_REGULAR || ip->entry.type == INODE_DEVICE))
             return ip;
-        }
-        // 如果目录项已存在，但类型不匹配，则返回 NULL
-        else {
-            inodes.unlock(ip);
-            inodes.put(ctx, ip);
-            return NULL;
-        }
+
+        inodes.unlock(ip);
+        inodes.put(ctx, ip);
+        return NULL;
+
     }
 
     // 分配新的 inode
     inode_no = inodes.alloc(ctx, type);
-    ip = inodes.get(inode_no);
+    if ((ip = inodes.get(inode_no)) == NULL) {
+        inodes.unlock(dp);
+        inodes.put(ctx, dp);
+        return 0;
+    };
 
     inodes.lock(ip);                    // 获取新 inode 的锁
 
@@ -330,11 +329,6 @@ Inode *create(const char *path, short type, short major, short minor,
     ip->entry.num_links = 1;
     inodes.sync(ctx, ip, true);
 
-    // 插入到父目录项
-    if (inodes.insert(ctx, dp, name, ip->inode_no) == (usize)(-1)) {
-        goto fail;
-    }
-
     // 如果是目录类型，则创建 "." 和 ".." 条目
     if (type == INODE_DIRECTORY) {
         // 创建 "." 和 ".." 条目
@@ -342,7 +336,15 @@ Inode *create(const char *path, short type, short major, short minor,
             inodes.insert(ctx, ip, "..", dp->inode_no) == (usize)(-1)) {
             goto fail;
         }
+    }
 
+    // 插入到父目录项
+    if (inodes.insert(ctx, dp, name, ip->inode_no) == (usize)(-1)) {
+        goto fail;
+    }
+
+    // 如果创建的是文件夹，增加其父目录的引用 (..)
+    if (type == INODE_DIRECTORY) {
         dp->entry.num_links++;
         inodes.sync(ctx, dp, true);
     }

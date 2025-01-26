@@ -108,8 +108,8 @@ void free_pgdir(struct pgdir *pgdir)
     kfree_page(pt0);
     pgdir->pt = NULL;
 
-    // 释放内存段
-    free_sections(pgdir);
+    // 释放内存段 (释放了会pagefault)
+    // free_sections(pgdir);
 }
 
 void attach_pgdir(struct pgdir *pgdir)

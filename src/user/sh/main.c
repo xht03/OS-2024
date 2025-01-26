@@ -155,8 +155,12 @@ int getcmd(char *buf, int nbuf)
     fprintf(stderr, "$ ");
     memset(buf, 0, nbuf);
     fgets(buf, nbuf, stdin);
+
     if (buf[0] == 0) // EOF
+    {
+        fprintf(stderr, "EOF\n");
         return -1;
+    }    
     return 0;
 }
 

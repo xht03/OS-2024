@@ -4,6 +4,7 @@
 #include <kernel/printk.h>
 #include <sys/stat.h>
 #include <kernel/sched.h>
+#include <kernel/console.h>
 
 
 static const SuperBlock* sblock;    // 超级块
@@ -333,6 +334,10 @@ static usize inode_map(OpContext* ctx, Inode* inode, usize offset, bool* modifie
 
 // 从 inode 读取数据 (caller 需要持有锁)
 static usize inode_read(Inode* inode, u8* dest, usize offset, usize count) {
+    
+    if (inode->entry.type == INODE_DEVICE)
+        return console_read(inode, (char*)dest, count);
+    
     InodeEntry* entry = &inode->entry;
 
     // 如果读取的数据超出文件大小
@@ -362,10 +367,10 @@ static usize inode_read(Inode* inode, u8* dest, usize offset, usize count) {
         } 
         // 否则，从缓存块中读取块数据
         else {
-            // Block* block = cache_acquire(block_no);
+            
             Block* block = cache->acquire(block_no);
             memcpy(dest + total_read, block->data + block_offset, bytes_to_read);
-            // cache_release(block);
+
             cache->release(block);
         }
 
@@ -378,6 +383,10 @@ static usize inode_read(Inode* inode, u8* dest, usize offset, usize count) {
 
 // 向 inode 写入数据 (caller 需要持有锁)
 static usize inode_write(OpContext* ctx, Inode* inode, u8* src, usize offset, usize count) {
+    
+    if (inode->entry.type == INODE_DEVICE)
+        return console_write(inode, (char*)src, count);
+    
     InodeEntry* entry = &inode->entry;
     usize end = offset + count;
 
@@ -623,7 +632,7 @@ static Inode* namex(const char* path,
                     char* name,
                     OpContext* ctx) {
     
-    Inode* ip, *next;
+    Inode* ip;
 
     // 初始化起始 inode
     // 如果是绝对路径，则从根目录开始。否则，从当前工作目录开始
@@ -634,14 +643,14 @@ static Inode* namex(const char* path,
     }
 
     // 逐层遍历路径
-    while ((path = skipelem(path, name)) != 0) {
+    while ((path = skipelem(path, name)) != NULL) {
         inodes.lock(ip);
 
         // 如果当前 inode 不是目录，则返回 NULL
         if(ip->entry.type != INODE_DIRECTORY) {
             inodes.unlock(ip);
             inodes.put(ctx, ip);
-            return 0;
+            return NULL;
         }
 
         // 如果是最后一个路径元素，并且需要返回父目录的 inode
@@ -651,15 +660,18 @@ static Inode* namex(const char* path,
         }
 
         // 查找下一个路径元素，失败则返回 NULL
-        if((next = inodes.get(inodes.lookup(ip, name, 0))) == 0) {
+        usize next = inodes.lookup(ip, name, 0);
+        if(next == 0) {
             inodes.unlock(ip);
             inodes.put(ctx, ip);
-            return 0;
+            return NULL;
         }
 
         inodes.unlock(ip);
         inodes.put(ctx, ip);
-        ip = next;
+
+        // 获取下一级索引项
+        ip = inodes.get(next);
     }
 
     // 当 nameiparent 为真且路径解析完毕时，释放当前 inode 并返回 NULL。

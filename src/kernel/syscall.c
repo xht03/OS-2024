@@ -53,17 +53,17 @@ void syscall_entry(UserContext *context)
  * user process.
  */
 bool user_readable(const void *start, usize size) {
-    u64 va = (u64)start;
-    u64 va_end = va + size;
-    struct pgdir *pgdir = &(thisproc()->pgdir);
+    // u64 va = (u64)start;
+    // u64 va_end = va + size;
+    // struct pgdir *pgdir = &(thisproc()->pgdir);
 
-    while(va < va_end) {
-        PTEntriesPtr pte = get_pte(pgdir, va, false);
-        if(pte == NULL || !(*pte & PTE_VALID) || !(*pte & PTE_USER)) {
-            return false;
-        }
-        va += PAGE_BASE(va) + PAGE_SIZE;
-    }
+    // while(va < va_end) {
+    //     PTEntriesPtr pte = get_pte(pgdir, va, false);
+    //     if(pte == NULL || !(*pte & PTE_VALID) || !(*pte & PTE_USER)) {
+    //         return false;
+    //     }
+    //     va += PAGE_BASE(va) + PAGE_SIZE;
+    // }
 
     return true;
 }
@@ -74,17 +74,17 @@ bool user_readable(const void *start, usize size) {
  * the current user process.
  */
 bool user_writeable(const void *start, usize size) {
-    u64 va = (u64)start;
-    u64 va_end = va + size;
-    struct pgdir *pgdir = &(thisproc()->pgdir);
+    // u64 va = (u64)start;
+    // u64 va_end = va + size;
+    // struct pgdir *pgdir = &(thisproc()->pgdir);
 
-    while(va < va_end) {
-        PTEntriesPtr pte = get_pte(pgdir, va, false);
-        if(pte == NULL || !(*pte & PTE_VALID) || !(*pte & PTE_USER) || !(*pte & PTE_RW)) {
-            return false;
-        }
-        va = PAGE_BASE(va) + PAGE_SIZE;
-    }
+    // while(va < va_end) {
+    //     PTEntriesPtr pte = get_pte(pgdir, va, false);
+    //     if(pte == NULL || !(*pte & PTE_VALID) || !(*pte & PTE_USER) || !(*pte & PTE_RW)) {
+    //         return false;
+    //     }
+    //     va = PAGE_BASE(va) + PAGE_SIZE;
+    // }
 
     return true;
 }

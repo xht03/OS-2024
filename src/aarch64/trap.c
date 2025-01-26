@@ -36,6 +36,8 @@ void trap_global_handler(UserContext *context)
     case ESR_EC_DABORT_EL0:
     case ESR_EC_DABORT_EL1: {
         pgfault_handler(iss);
+        // printk("Page fault\n");
+        // PANIC();
     } break;
     default: {
         printk("Unknwon exception %llu\n", esr);
@@ -44,6 +46,7 @@ void trap_global_handler(UserContext *context)
     }
     
     // Lab4: stop killed process while returning to user space
+    // 如果进程有终止标志，且即将返回到用户态 则执行exit(-1)
     if (thisproc()->killed && (context->spsr_el1 & SPSR_EL1_DAIF_MASK) == 0) {
         exit(-1);
     }

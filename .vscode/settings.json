@@ -44,6 +44,7 @@
         "mmu.h": "c",
         "unistd.h": "c",
         "buf.h": "c",
-        "block_device.h": "c"
+        "block_device.h": "c",
+        "gicv3.h": "c"
     }
 }

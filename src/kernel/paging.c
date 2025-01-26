@@ -28,8 +28,9 @@ void free_sections(struct pgdir *pd) {
         _detach_from_list(node);
 
         if(section->fp != NULL) {
-            inodes.lock(section->fp->ip);
-            file_close(section->fp);
+            if(section->fp->ref > 0) {
+                file_close(section->fp);
+            }
             kfree(section->fp);
         }
 

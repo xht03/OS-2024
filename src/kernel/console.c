@@ -4,6 +4,7 @@
 #include <driver/uart.h>
 
 #define BACKSPACE 0x100
+#define C(x) ((x) - '@')
 
 struct console cons;
 
